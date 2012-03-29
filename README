@@ -1,0 +1,8 @@
+SCIM - Simple Clustering Infrastructure Management
+
+This is a software package to manage network filesystem and service clusters.
+
+It uses Glusterfs - http://glusterfs.org, as the cluster filesystem provider and
+Linux Process Containers and Control Groups for cluster service management. It will also
+make use of Linux Kernel Virtual - KVM for management of foreign operating systems that
+are part of the cluster.
