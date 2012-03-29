@@ -1,0 +1,34 @@
+acpid				ROOTSBINDIR TASK FREE
+asterisk				SBINDIR TASK FREE
+auditd				ROOTSBINDIR TASK FREE
+automount			ROOTSBINDIR TASK FREE
+consd				ROOTSBINDIR TASK FREE
+crond				ROOTSBINDIR TASK FREE
+cupsd					SBINDIR TASK FREE
+dbus-daemon				 BINDIR TASK FREE --system
+dhclient			ROOTSBINDIR TASK FREE
+dhcpd					SBINDIR TASK FREE
+dovecot					SBINDIR TASK FREE
+fetchmail				SBINDIR TASK FREE
+glusterd			ROOTSBINDIR TASK FREE
+glusterfs			ROOTSBINDIR TASK FREE -f /etc/glusterfs/glusterfs.vol -l /var/log/glusterfs -L TRACE -p /var/run/glusterfs.pid /adm
+glusterfsd			ROOTSBINDIR TASK FREE -f /etc/glusterfs/glusterfsd.vol -l /var/log/glusterfsd -L TRACE -p /var/run/glusterfsd.pid
+httpd					SBINDIR TASK FREE
+ircd					SBINDIR TASK FREE
+klogd				ROOTSBINDIR TASK FREE
+postfix/master			 LIBDIR TASK WARD
+named				ROOTSBINDIR TASK FREE
+nmbd					SBINDIR TASK FREE -D
+ntpd				ROOTSBINDIR TASK FREE
+postgres				SBINDIR TASK FREE
+qemu-system-x86_64		 BINDIR TASK FREE
+racoon				ROOTSBINDIR TASK FREE
+saslauthd				SBINDIR TASK FREE
+smbd					SBINDIR TASK FREE -D
+srvcd				ROOTSBINDIR TASK FREE
+sshd				ROOTSBINDIR TASK FREE
+syslogd				ROOTSBINDIR TASK FREE -p /var/run/log
+udev/udevd			 ROOTLIBDIR	TASK WARD
+xdm						 BINDIR TASK WARD
+Xorg					 BINDIR TASK WARD
+zebra				ROOTSBINDIR TASK FREE -d -g root -u root -i /var/run/zebra.pid

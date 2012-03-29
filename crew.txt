@@ -1,0 +1,21 @@
+INTRANET_CONTENT sshd syslogd
+INTRANET_HOSTING udevd sshd klogd syslogd
+INTRANET_MESSAGE sshd syslogd
+INTRANET_PRESIDE sshd syslogd dhcpd named
+INTRANET_ROUTING sshd syslogd
+INTRANET_SESSION sshd syslogd
+INTRANET_STORAGE sshd syslogd
+EXTRANET_CONTENT sshd syslogd
+EXTRANET_HOSTING sshd syslogd
+EXTRANET_MESSAGE sshd syslogd
+EXTRANET_PRESIDE sshd syslogd
+EXTRANET_ROUTING sshd syslogd
+EXTRANET_SESSION sshd syslogd
+EXTRANET_STORAGE sshd syslogd
+INTERNET_CONTENT sshd syslogd
+INTERNET_HOSTING sshd syslogd
+INTERNET_MESSAGE sshd syslogd
+INTERNET_PRESIDE sshd syslogd
+INTERNET_ROUTING sshd syslogd zebra
+INTERNET_SESSION sshd syslogd
+INTERNET_STORAGE sshd syslogd

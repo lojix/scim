@@ -1,0 +1,5 @@
+i:2:initdefault:
+m:1Ss:respawn:/sbin/sulogin -e -p /dev/console
+1:2345:respawn:/sbin/agetty 38400 tty1 linux
+p:2345:respawn:/sbin/srvcd
+k:06:respawn:/sbin/shutd
