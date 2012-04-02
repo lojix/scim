@@ -106,22 +106,11 @@ rootfs-setup()
 	mount -r -t squashfs /dev/loop0 mnt
 	mount -t ext4 /dev/loop1 mnt/dat
 
-	#mount -o mode=0755 -t tmpfs none mnt/run
+	mount -o mode=0755 -t tmpfs none mnt/run
 
-	#mv run/host mnt/run
-	#mv run/adm mnt/run
-
-	#losetup /dev/loop1 mnt/run/adm/image
-	#mount /dev/loop1 mnt/run/adm
-
-	#for dir in etc net root srv var lib/firmware lib$bit/modules; do
 	for dir in etc root srv var; do
-		#test -d mnt/run/host/localhost/$dir || mv $dir mnt/run/host/localhost
-		#mount --bind -n mnt/run/host/localhost/${dir##*/} mnt/$dir
 		mount --bind -n mnt/dat/localhost/${dir##*/} mnt/$dir
 		done
-
-	#install -d -m 0755 mnt/run/host/localhost/adm
 
 	return
 }

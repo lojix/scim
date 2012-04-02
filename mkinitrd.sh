@@ -24,6 +24,7 @@ install-program-library()
 	declare libdir=initrd/lib$bit
 	declare type=`file -b --mime-type $1`
 	declare strip=`type -p strip`
+	export LD_LIBRARY_PATH=$PWD/lib$bit:$PWD/usr$bit/lib
 
 	test ${type// } = application/x-executable || return
 
@@ -41,7 +42,12 @@ install-program-library()
 			fi
 
 		if test ! -f $libdir/${library##*/}; then
-			cp --link ${library:1} $libdir/${library##*/}
+			if test -f ${library:1}; then
+				cp --link ${library:1} $libdir/${library##*/}
+			elif test -f $library; then
+				cp --link $library $libdir/${library##*/}
+			fi
+
 			ldconfig -l $libdir/${library##*/}
 			fi
 
@@ -68,11 +74,11 @@ initrd-create()
 
 	rm -fr initrd
 
-	install -d -m 0755 initrd/{boot/linux,bin,dev,lib/{firmware,init},lib$bit/{modules/$linux,udev},mnt,net,proc,run,root,sbin,srv,sys,var/{cache,db,lib,log,run,spool,state},vol}
+	install -d -m 0755 initrd/{boot/linux,bin,dev,lib/{firmware,scim},lib$bit/{modules/$linux,udev},mnt,net,proc,run,root,sbin,srv,sys,var/{cache,db,lib,log,run,spool,state},vol}
 	install -d -m 1777 initrd/tmp
 	
 	cp --archive --link etc initrd/
-	cp --link lib/init/rdinit initrd/lib/init/
+	cp --link lib/scim/rdinit initrd/lib/scim/
 	cp --link lib$bit/ld-$glibc.so initrd/lib$bit/
 	cp --link ${dynamic_linker:1} initrd/lib$bit/
 	cp --link bin/sh initrd/bin/sh
@@ -112,8 +118,8 @@ extlinux-create()
 
 	LABEL maiden
 	 MENU LABEL linux $linux - glibc $glibc $bit bit ${2:-maiden}
-	 APPEND quiet rdinit=/lib/init/rdinit
-	 INITRD /boot/linux/system.cpio.xz,/boot/linux/kernel.cpio.xz,/boot/linux/${2:-maiden}.cpio.xz
+	 APPEND quiet rdinit=/lib/scim/rdinit
+	 INITRD /boot/linux/system.cpio.xz
 	 KERNEL /boot/linux/kernel.xz
 
 	EOF
@@ -135,8 +141,8 @@ extlinux-stanza-create()
 	LABEL $1
 	#MENU DEFAULT
 	 MENU LABEL linux $linux - glibc $glibc $bit bit ${2:-$1}
-	 APPEND quiet rdinit=/lib/init/rdinit
-	 INITRD /boot/linux/system.cpio.xz,/boot/linux/kernel.cpio.xz,/boot/linux/$1.cpio.xz
+	 APPEND quiet rdinit=/lib/scim/rdinit
+	 INITRD /boot/linux/system.cpio.xz
 	 KERNEL /boot/linux/kernel.xz
 	EOF
 
@@ -161,8 +167,8 @@ pxelinux-create()
 
 	LABEL linux
 	 MENU LABEL linux $linux - glibc $glibc $bit bit
-	 APPEND quiet rdinit=/lib/init/rdinit
-	 INITRD /linux/system.cpio.xz,/linux/kernel.cpio.xz,/linux/${2:-maiden}.cpio.xz
+	 APPEND quiet rdinit=/lib/scim/rdinit
+	 INITRD /linux/system.cpio.xz
 	 KERNEL /linux/kernel.xz
 	EOF
 
@@ -235,17 +241,17 @@ change-archive-create()
 
 kernel-archive-create()
 {
-	$cpio < <(find lib/firmware lib$bit/modules/$linux) | \
-		$xz > $bootdir/kernel.cpio.xz
+	#$cpio < <(find lib/firmware lib$bit/modules/$linux) | \
+	#	$xz > $bootdir/kernel.cpio.xz
 
 	cp --link --update lib$bit/modules/$linux/bzImage $bootdir/kernel.xz
 
 	return
 }
 
-app-image-create()
+tool-image-create()
 {
-	mksquashfs usr usr32 usr64 $bootdir/app.squashfs \
+	mksquashfs usr usr32 usr64 $bootdir/tool \
 		-b 1048576 \
 		-noappend \
 		-no-progress \
@@ -344,10 +350,6 @@ while (($# > 0)); do
 		function=all-archive-create
 		;;
 
-	--app|-P)
-		function=app-image-create
-		;;
-
 	--kernel|-K)
 		function=kernel-archive-create
 		;;
@@ -358,6 +360,10 @@ while (($# > 0)); do
 
 	--system|-S)
 		function=system-archive-create
+		;;
+
+	--tool|-T)
+		function=tool-image-create
 		;;
 
 	--change|-U)

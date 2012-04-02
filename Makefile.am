@@ -11,7 +11,7 @@ lib_LTLIBRARIES		 = libscim.la
 
 scimscript_SCRIPTS	= rdinit
 
-rootsysconf_DATA	= inittab
+sysconf_DATA		= inittab
 
 rootsbin_PROGRAMS	= shutd srvc srvcd
 
