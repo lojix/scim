@@ -26,6 +26,11 @@ nobase_include_HEADERS = \
 	scim/netlink.h \
 	scim/scim.h
 
+nodist_include_HEADERS = \
+	scim/api.h \
+	scim/code.h \
+	scim/data.h
+
 BUILT_SOURCES = \
 	scim/api.h \
 	scim/code.h \
@@ -97,6 +102,7 @@ DISTCLEANFILES = \
 	rdinit
 
 EXTRA_DIST = \
+	api.sh \
 	data.sh \
 	inittab \
 	mkinitrd.sh \
@@ -104,10 +110,10 @@ EXTRA_DIST = \
 	$(scim_data)
 
 scim/api.h: $(libscim_la_sources)
-	sed -n -f api.sed $(libscim_la_sources) > $@
+	$(SHELL) $(srcdir)/api.sh $(srcdir)
 
 scim/code.h scim/data.h: $(scim_data)
-	$(SHELL) data.sh
+	$(SHELL) $(srcdir)/data.sh $(srcdir)
 
 %: %.sh
 	sed \

@@ -21,5 +21,6 @@ ltmain.sh
 missing
 Makefile
 Makefile.in
+scim/api.h
 scim/code.h
 scim/data.h

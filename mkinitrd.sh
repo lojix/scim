@@ -11,10 +11,10 @@ declare bootdir=boot/linux
 declare xz="xz -z9 --check=crc32 --lzma2=dict=1MiB"
 declare cpio="cpio --create --format=newc --quiet"
 
-declare -r bin_programs=(bash cat chroot cp cpio cut getconf grep head install ln ls mount mountpoint mv rm stat stty truncate udevd udevadm umount uname xz)
+declare -r bin_programs=(bash cat chroot cp cpio cut getconf grep head install ln ls mount mount.ocfs2 mountpoint mv rm stat stty truncate udevd udevadm umount uname xz)
 declare -r sbin_programs=(arping depmod ip insmod kmod losetup mke2fs modprobe sulogin switch_root swapon sysctl init)
 declare -r programs=(${bin_programs[@]} ${sbin_programs[@]})
-declare -r modules=(configfs crc16 dummy ext4 fuse ipv6 jbd2 loop mbcache rtc-cmos squashfs tun unix)
+declare -r modules=(configfs crc16 dummy ext4 fuse ipv6 jbd2 loop ocfs2_stackglue quota_tree ocfs2_nodemanager ocfs2 mbcache rtc-cmos squashfs tun unix)
 
 shopt -s nullglob
 
@@ -103,6 +103,22 @@ initrd-create()
 	return
 }
 
+extlinux-stanza-create()
+{
+	cat <<-EOF > boot/syslinux/${1}.conf.$$
+	LABEL $1
+	 MENU DEFAULT
+	 MENU LABEL linux $linux - glibc $glibc $bit bit ${2:-$1}
+	 APPEND quiet rdinit=/lib/scim/rdinit
+	 INITRD /boot/linux/root.cpio.xz,/boot/linux/${1}.cpio.xz
+	 KERNEL /boot/linux/kernel.xz
+	EOF
+
+	mv boot/syslinux/${1}.conf{.$$,}
+
+	return
+}
+
 extlinux-create()
 {
 	mountpoint -q boot || cp --archive --link --update lib/syslinux boot
@@ -117,36 +133,25 @@ extlinux-create()
 	MENU TITLE SYSLINUX Disk Bootloader [$(pckg --root=$PWD --list syslinux)]
 
 	LABEL maiden
-	 MENU LABEL linux $linux - glibc $glibc $bit bit ${2:-maiden}
+	 MENU LABEL linux $linux - glibc $glibc $bit bit ${2:-default}
 	 APPEND quiet rdinit=/lib/scim/rdinit
-	 INITRD /boot/linux/system.cpio.xz
+	 INITRD /boot/linux/root.cpio.xz
 	 KERNEL /boot/linux/kernel.xz
 
 	EOF
 
-
-	for serial in $(cat /sys/class/net/eth[0-9]*/address|sort); do
-		test -r boot/linux/${serial//:}.cpio.xz || continue
-		echo "INCLUDE ${serial//:}.conf" >> boot/syslinux/${1:-extlinux}.conf.$$
-		done
+	if test -f boot/linux/${HOSTNAME}.cpio.xz; then
+		cat <<-EOF >> boot/syslinux/${1}.conf.$$
+		LABEL ${HOSTNAME}
+		 MENU DEFAULT
+		 MENU LABEL linux $linux - glibc $glibc $bit bit ${HOSTNAME}
+		 APPEND quiet rdinit=/lib/scim/rdinit
+		 INITRD /boot/linux/root.cpio.xz,/boot/linux/${HOSTNAME}.cpio.xz
+		 KERNEL /boot/linux/kernel.xz
+		EOF
+		fi
 
 	mv boot/syslinux/${1:-extlinux}.conf{.$$,}
-
-	return
-}
-
-extlinux-stanza-create()
-{
-	cat <<-EOF > boot/syslinux/${1}.conf.$$
-	LABEL $1
-	#MENU DEFAULT
-	 MENU LABEL linux $linux - glibc $glibc $bit bit ${2:-$1}
-	 APPEND quiet rdinit=/lib/scim/rdinit
-	 INITRD /boot/linux/system.cpio.xz
-	 KERNEL /boot/linux/kernel.xz
-	EOF
-
-	mv boot/syslinux/${1}.conf{.$$,}
 
 	return
 }
@@ -168,7 +173,7 @@ pxelinux-create()
 	LABEL linux
 	 MENU LABEL linux $linux - glibc $glibc $bit bit
 	 APPEND quiet rdinit=/lib/scim/rdinit
-	 INITRD /linux/system.cpio.xz
+	 INITRD /linux/root.cpio.xz,/linux/data.cpio.xz
 	 KERNEL /linux/kernel.xz
 	EOF
 
@@ -177,81 +182,40 @@ pxelinux-create()
 	return
 }
 
-maiden-content-gather()
-{
-	echo run
-	find etc var -xdev -path var/lib/pckg/$machine-linux -prune -o -print
-	find root -maxdepth 1
-	find srv -maxdepth 1 -xdev
-	find srv/{bind,dhcp,ipsec,nfs,quagga}
-	return
-}
-
-maiden-archive-create()
-{
-	$cpio < <(maiden-content-gather) | $xz > $bootdir/maiden.cpio.xz
-	ln  $bootdir/maiden.cpio.xz{,.$$}
-	mv  $bootdir/maiden.cpio.xz.$$ lib/maiden.cpio.xz
-	return
-}
-
-change-content-gather()
-{
-	#maiden-content-gather
-	#find run/host \( -path run/host/$HOSTNAME -o -path run/host/localhost \) -prune -o -print
-	#find run/host/localhost/adm
-	cat <<-EOF
-	boot/linux/data
-	boot/linux/root
-	EOF
-	return
-}
-
 change-archive-create()
 {
-	declare index=1
-	declare serial=(`cat /sys/class/net/eth[0-9]*/address|sort`)
-
 	install -d /tmp/boot/linux
-	mount --bind /dev/sytem /tmp/boot/linux
+	mount --bind /dev/system /tmp/boot/linux
 
-	(cd /tmp; $cpio) < <(change-content-gather) | $xz > $bootdir/${serial[0]//:}.cpio.xz.$$
+	(cd /tmp; echo boot/linux/data|$cpio) | $xz > $bootdir/${HOSTNAME}.cpio.xz.$$
 
 	umount /tmp/boot/linux
 	rm -r /tmp/boot/linux
 
-	mv $bootdir/${serial[0]//:}.cpio.xz{.$$,}
-
-	extlinux-stanza-create ${serial[0]//:}
-
-	while ((index < ${#serial[@]})); do
-		ln $bootdir/${serial[0]//:}.cpio.xz $bootdir/${serial[index]//:}.cpio.xz.$$
-		mv $bootdir/${serial[index]//:}.cpio.xz{.$$,}
-
-		extlinux-stanza-create ${serial[index]//:}
-		((index++))
-	done
-
+	mv $bootdir/${HOSTNAME}.cpio.xz{.$$,}
 	extlinux-create
-
-	sed -i -e '/MENU DEFAULT/s/#//' boot/syslinux/${serial[0]//:}.conf
 
 	return
 }
 
 kernel-archive-create()
 {
-	#$cpio < <(find lib/firmware lib$bit/modules/$linux) | \
-	#	$xz > $bootdir/kernel.cpio.xz
-
 	cp --link --update lib$bit/modules/$linux/bzImage $bootdir/kernel.xz
-
 	return
 }
 
 tool-image-create()
 {
-	mksquashfs usr usr32 usr64 $bootdir/tool \
+	mksquashfs usr $bootdir/usr \
+		-b 1048576 \
+		-noappend \
+		-no-progress \
+		-comp xz \
+		-Xbcj x86 \
+		-Xdict-size 1024K \
+		2> /dev/null
+
+	mksquashfs usr$bit $bootdir/x${bit} \
 		-b 1048576 \
 		-noappend \
 		-no-progress \
@@ -263,16 +227,41 @@ tool-image-create()
 	return
 }
 
+data-content-gather()
+{
+	echo run
+	find etc var -xdev -path var/lib/pckg/$machine-linux -prune -o -print
+	find root -maxdepth 1
+	find srv -maxdepth 1 -xdev
+	find srv/{bind,dhcp,ipsec,nfs,quagga}
+	return
+}
+
 data-image-create()
 {
-	truncate -s 32M boot/linux/data
-	mke2fs -F -L data -q -t ext4 boot/linux/data
-
 	install -d -m 0755 dat
-	mount -o loop boot/linux/data dat
+	rm -f boot/linux/data
+	truncate -s 32M boot/linux/data
+
+	loop=$(losetup -f --show boot/linux/data) || exit 1
+
+	sbin/mkfs.ocfs2 -b 4096 -F -J size=4M -L data -M local -T mail --fs-feature-level=max-features -q $loop || exit 1
+	sbin/mount.ocfs2 $loop dat || exit 1
+
 	install -d -m 0755 dat/localhost
-	cpio -p dat/localhost < <(maiden-content-gather)
+	cpio -p dat/localhost < <(data-content-gather)
+
 	umount dat
+	losetup -d $loop
+
+	rm -f initrd/boot/linux/data
+
+	return
+}
+
+data-archive-create()
+{
+	$cpio < <(echo boot/linux/data) | $xz > $bootdir/data.cpio.xz
 	return
 }
 
@@ -280,7 +269,6 @@ root-image-create()
 {
 	initrd-create
 
-	#mksquashfs bin lib lib$bit sbin $bootdir/system.squashfs \
 	mksquashfs bin lib lib$bit sbin $bootdir/root \
 		-b 1048576 \
 		-noappend \
@@ -312,31 +300,34 @@ root-image-create()
 		-p "var d 755 root root" \
 		-p "vol d 755 root root" \
 		2> /dev/null
-#		-e modules \
-#		-e firmware \
 
 	return
 }
 
-system-archive-create()
+root-archive-create()
 {
-	(cd initrd && $cpio -O ../$bootdir/system.cpio.$$) < <(find initrd -mindepth 1 -xdev -printf "%P\n")
-	$cpio --append -O $bootdir/system.cpio.$$ < <(change-content-gather)
-	$xz $bootdir/system.cpio.$$
-	mv $bootdir/system.cpio.{$$.,}xz
+	rm -f initrd/boot/linux/{data,root}
+	ln boot/linux/{data,root} initrd/boot/linux/
+
+	cd initrd
+	$cpio -O ../$bootdir/root.cpio.$$ < <(find -mindepth 1 -printf "%P\n")
+	cd ..
+
+	$xz $bootdir/root.cpio.$$
+	mv $bootdir/root.cpio.{$$.,}xz
+
+	cp --link --update lib$bit/modules/$linux/bzImage $bootdir/kernel.xz
 
 	return
 }
 
 all-archive-create()
 {
-	maiden-archive-create
-
 	data-image-create
-	root-image-create
+	data-archive-create
 
-	system-archive-create
-	kernel-archive-create
+	root-image-create
+	root-archive-create
 
 	extlinux-create
 	pxelinux-create
@@ -359,7 +350,7 @@ while (($# > 0)); do
 		;;
 
 	--system|-S)
-		function=system-archive-create
+		function=root-archive-create
 		;;
 
 	--tool|-T)

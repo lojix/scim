@@ -8,7 +8,7 @@ declare glibc=`getconf GNU_LIBC_VERSION|cut -f2 -d\ `
 declare linux=`uname -r`
 declare machine=`uname -m`
 declare system=x$bit-linux-$linux-glibc-$glibc
-declare modules=(dummy ext4 ipv6 loop rtc-cmos squashfs unix)
+declare modules=(dummy ipv6 loop ocfs2 rtc-cmos squashfs unix)
 
 system-init()
 {
@@ -104,8 +104,7 @@ rootfs-setup()
 	losetup /dev/loop1 /dev/system/data
 
 	mount -r -t squashfs /dev/loop0 mnt
-	mount -t ext4 /dev/loop1 mnt/dat
-
+	mount -t ocfs2 /dev/loop1 mnt/dat
 	mount -o mode=0755 -t tmpfs none mnt/run
 
 	for dir in etc root srv var; do

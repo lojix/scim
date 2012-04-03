@@ -1,16 +1,17 @@
 #!/bin/bash
 
+declare -r srcdir=$1
 declare -r team_size=8
-declare -r task_list=task.txt
-declare -r host_list=host.txt
-declare -r crew_list=crew.txt
-declare -r port_list=port.txt
-declare -r aide_list=aide.txt
-declare -r ward_list=ward.txt
+declare -r task_list=$srcdir/task.txt
+declare -r host_list=$srcdir/host.txt
+declare -r crew_list=$srcdir/crew.txt
+declare -r port_list=$srcdir/port.txt
+declare -r aide_list=$srcdir/aide.txt
+declare -r ward_list=$srcdir/ward.txt
 
-exec > scim/code.h
+exec > $srcdir/scim/code.h
 
-echo "typedef enum srvc_task_name_t {"
+echo "typedef enum scim_task_name_t {"
 
 while read -a line; do
 	NAME=$(echo ${line[0]##*/}|tr '[:lower:]' '[:upper:]')
@@ -30,12 +31,12 @@ while read -a line; do
 echo " _TASK_NAME_MAX = _TASK_$NAME,"
 echo " _TASK_NAME_END,"
 echo " _TASK_NAME_SUM"
-echo "} srvc_task_name_t;"
+echo "} scim_task_name_t;"
 echo
 
 code=0
 
-echo "typedef enum srvc_task_code_t {"
+echo "typedef enum scim_task_code_t {"
 
 while read -a line; do
 	CODE=$(printf "%04X" $code)
@@ -62,11 +63,11 @@ while read -a line; do
 echo " _TASK_CODE_MAX = _TASK_$CODE,"
 echo " _TASK_CODE_END,"
 echo " _TASK_CODE_SUM"
-echo "} srvc_task_code_t;"
+echo "} scim_task_code_t;"
 echo
 
 code=0
-echo "typedef enum srvc_cell_code_t {"
+echo "typedef enum scim_cell_code_t {"
 
 while read -a line; do
 	CODE=$(printf "%04X" $code)
@@ -80,12 +81,12 @@ while read -a line; do
 echo " _CELL_CODE_MAX = _CELL_$CODE,"
 echo " _CELL_CODE_END,"
 echo " _CELL_CODE_SUM"
-echo "} srvc_cell_code_t;"
+echo "} scim_cell_code_t;"
 echo
 
 code=0
 
-echo "typedef enum srvc_soul_code_t {"
+echo "typedef enum scim_soul_code_t {"
 
 while read -a line; do
 	CODE=$(printf "%04X" $code)
@@ -122,12 +123,12 @@ while read -a line; do
 echo " _SOUL_CODE_MAX = _SOUL_$CODE,"
 echo " _SOUL_CODE_END,"
 echo " _SOUL_CODE_SUM"
-echo "} srvc_soul_code_t;"
+echo "} scim_soul_code_t;"
 echo
 
 code=0
 
-echo "typedef enum srvc_sect_code_t {"
+echo "typedef enum scim_sect_code_t {"
 
 while read -a line; do
 	CODE=$(printf "%04X" $code)
@@ -155,13 +156,13 @@ while read -a line; do
 echo " _SECT_CODE_MAX = _SECT_$CODE,"
 echo " _SECT_CODE_END,"
 echo " _SECT_CODE_SUM"
-echo "} srvc_sect_code_t;"
+echo "} scim_sect_code_t;"
 echo
 
 host=0
 team_sum=0
 
-echo "typedef enum srvc_team_code_t {"
+echo "typedef enum scim_team_code_t {"
 
 while read; do
 	if ((++host % team_size == 0)); then
@@ -174,13 +175,13 @@ while read; do
 echo " _TEAM_CODE_MAX = _TEAM_$CODE,"
 echo " _TEAM_CODE_END,"
 echo " _TEAM_CODE_SUM"
-echo "} srvc_team_code_t;"
+echo "} scim_team_code_t;"
 echo
 
 #
 # Data definations.
 #
-exec > scim/data.h
+exec > $srcdir/scim/data.h
 
 echo "#define CELL_TASK(__code__) __task + _CELL_CODE_MIN + _CELL_ ## __code__"
 echo
@@ -278,7 +279,7 @@ while read TASK list; do
 	TASK=$(echo $TASK|tr '[:lower:]' '[:upper:]')
 	aide=0
 
-	printf " %-24s = {(srvc_task_t[]){" "[_TASK_$TASK]"
+	printf " %-24s = {(scim_task_t[]){" "[_TASK_$TASK]"
 
 	for AIDE in $list; do
 		AIDE=$(echo $AIDE|tr '[:lower:]' '[:upper:]')
@@ -302,7 +303,7 @@ while read TASK list; do
 	TASK=$(echo $TASK|tr '[:lower:]' '[:upper:]')
 	ward=0
 
-	printf " %-24s = {(srvc_task_t[]){" "[_TASK_$TASK]"
+	printf " %-24s = {(scim_task_t[]){" "[_TASK_$TASK]"
 
 	for WARD in $list; do
 		WARD=$(echo $WARD|tr '[:lower:]' '[:upper:]')
@@ -420,7 +421,7 @@ echo "#define __TASKS__ \\"
 while read POST crew; do
 	task=0
 
-	echo -n " [_POST_$POST] = {(srvc_task_t[]){"
+	echo -n " [_POST_$POST] = {(scim_task_t[]){"
 
 	for TASK in $crew; do
 		TASK=$(echo $TASK|tr '[:lower:]' '[:upper:]')
@@ -446,7 +447,7 @@ while ((team < team_sum)); do
 	host=0
 	TEAM=$(printf "%04X" $team)
 
-	echo -n " [_CELL_$TEAM] = {(srvc_task_t[]){"
+	echo -n " [_CELL_$TEAM] = {(scim_task_t[]){"
 
 	while ((host < team_size)); do
 		HOST=$(printf "%04X" $((host * team_sum + team)))

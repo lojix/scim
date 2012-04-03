@@ -42,5 +42,7 @@ int main(int argc, char* argv[])
 	scim_site_pick(none, site, _SITE_TYPE, "btrfs", false);
 	scim_site_dump(none);
 
+	printf("%d\n", LONG_BIT);
+
 	exit(EXIT_SUCCESS);
 }

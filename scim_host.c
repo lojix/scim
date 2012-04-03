@@ -2,6 +2,9 @@
 #include <fcntl.h>
 #include <time.h>
 #include <signal.h>
+#include <gnu/libc-version.h>
+#include <sys/mount.h>
+#include <sys/utsname.h>
 
 #define _MKINITRD				ROOTSBINDIR "mkinitrd"
 #define _MODPROBE				ROOTSBINDIR "modprobe"
@@ -27,6 +30,52 @@ char** __tool_hardware[] = {
  (char*[]){_UDEVADM, "control", "--exit", NULL},
  NULL
 };
+
+int scim_host_site_redo(scim_root_t _root)
+{
+	char path[PATH_MAX] = "/dev/disk/by-label/";
+	struct utsname utsname[1];
+	scim_site_data_t site = {
+	 {
+		.last = 0,
+		.list = {
+			{path, "/vol", "btrfs", "subvolid=0"},
+			{}
+		}
+	 }
+	};
+
+	strncat(path, _root->task->name, 12);
+
+	if(access(path, F_OK) != 0) {
+		fprintf(stderr, "%s: access %s: %m\n", __func__, path);
+		return 0;
+	}
+
+	if(scim_site_redo(site) < 0) {
+		return -1;
+	}
+
+	uname(utsname);
+	snprintf(path, sizeof(path), "/vol/os/x%d-linux-%s-glibc-%s/boot/", LONG_BIT, utsname->release, gnu_get_libc_version());
+
+	if(access(path, F_OK) != 0) {
+		fprintf(stderr, "%s: access %s: %m\n", __func__, path);
+		return 0;
+	}
+
+	site->flag = MS_BIND;
+	site->list[0][_SITE_DISK] = strdupa(path);
+	site->list[0][_SITE_PATH] = "/boot";
+	site->list[0][_SITE_TYPE] = NULL;
+	site->list[0][_SITE_FLAG] = NULL;
+
+	if(scim_site_redo(site) < 0) {
+		return -1;
+	}
+
+	return 0;
+}
 
 int scim_host_save(scim_root_t _root)
 {
@@ -84,6 +133,10 @@ int scim_host_wake(scim_root_t _root)
 	}
 
 	if(scim_port_make(_root->task) < 0) {
+		return -1;
+	}
+
+	if(scim_host_site_redo(_root) < 0) {
 		return -1;
 	}
 
