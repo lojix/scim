@@ -8,7 +8,7 @@ declare glibc=`getconf GNU_LIBC_VERSION|cut -f2 -d\ `
 declare linux=`uname -r`
 declare machine=`uname -m`
 declare system=x$bit-linux-$linux-glibc-$glibc
-declare modules=(dummy ipv6 loop ocfs2 rtc-cmos squashfs unix)
+declare modules=(dummy ipv6 loop ocfs2 rtc-cmos rxdsk squashfs unix zram)
 
 system-init()
 {
@@ -99,12 +99,14 @@ network-setup()
 
 rootfs-setup()
 {
-	mv boot/linux/{data,root} dev/system
-	losetup /dev/loop0 /dev/system/root
-	losetup /dev/loop1 /dev/system/data
+	echo "rxdsk attach 0 $(stat -c %b boot/linux/root)" > proc/rxctl
+	echo "$((48 * 1048576))" > sys/block/zram0/disksize
 
-	mount -r -t squashfs /dev/loop0 mnt
-	mount -t ocfs2 /dev/loop1 mnt/dat
+	xz -dc < boot/linux/data > dev/zram0
+	dd if=boot/linux/root of=dev/rxd0
+
+	mount -r -t squashfs /dev/rxd0 mnt
+	mount -t ocfs2 /dev/zram0 mnt/dat
 	mount -o mode=0755 -t tmpfs none mnt/run
 
 	for dir in etc root srv var; do

@@ -44,5 +44,9 @@ int main(int argc, char* argv[])
 
 	printf("%d\n", LONG_BIT);
 
+	if(scim_cpio_data_save(NULL, NULL, NULL) < 0) {
+		exit(EXIT_FAILURE);
+	}
+
 	exit(EXIT_SUCCESS);
 }

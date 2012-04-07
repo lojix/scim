@@ -11,10 +11,10 @@ declare bootdir=boot/linux
 declare xz="xz -z9 --check=crc32 --lzma2=dict=1MiB"
 declare cpio="cpio --create --format=newc --quiet"
 
-declare -r bin_programs=(bash cat chroot cp cpio cut getconf grep head install ln ls mount mount.ocfs2 mountpoint mv rm stat stty truncate udevd udevadm umount uname xz)
+declare -r bin_programs=(bash cat chroot cp cpio cut dd getconf grep head install ln ls mount mount.ocfs2 mountpoint mv rm rxadm stat stty truncate udevd udevadm umount uname xz)
 declare -r sbin_programs=(arping depmod ip insmod kmod losetup mke2fs modprobe sulogin switch_root swapon sysctl init)
 declare -r programs=(${bin_programs[@]} ${sbin_programs[@]})
-declare -r modules=(configfs crc16 dummy ext4 fuse ipv6 jbd2 loop ocfs2_stackglue quota_tree ocfs2_nodemanager ocfs2 mbcache rtc-cmos squashfs tun unix)
+declare -r modules=(configfs crc16 dummy ext4 fuse ipv6 jbd2 loop ocfs2_stackglue quota_tree ocfs2_nodemanager ocfs2 mbcache rtc-cmos rxdsk squashfs tun unix zram)
 
 shopt -s nullglob
 
@@ -204,18 +204,9 @@ kernel-archive-create()
 	return
 }
 
-tool-image-create()
+system-image-create()
 {
-	mksquashfs usr $bootdir/usr \
-		-b 1048576 \
-		-noappend \
-		-no-progress \
-		-comp xz \
-		-Xbcj x86 \
-		-Xdict-size 1024K \
-		2> /dev/null
-
-	mksquashfs usr$bit $bootdir/x${bit} \
+	mksquashfs ${image[0]} $bootdir/${image[1]:-${image[0]}} \
 		-b 1048576 \
 		-noappend \
 		-no-progress \
@@ -239,20 +230,27 @@ data-content-gather()
 
 data-image-create()
 {
+	declare unit=0
+	declare size=$((1048576 * 48))
+
 	install -d -m 0755 dat
 	rm -f boot/linux/data
-	truncate -s 32M boot/linux/data
 
-	loop=$(losetup -f --show boot/linux/data) || exit 1
+	echo $size > /sys/block/zram$unit/disksize
 
-	sbin/mkfs.ocfs2 -b 4096 -F -J size=4M -L data -M local -T mail --fs-feature-level=max-features -q $loop || exit 1
-	sbin/mount.ocfs2 $loop dat || exit 1
+	sbin/mkfs.ocfs2 -b 4096 -F -J size=4M -L data -M local -T mail --fs-feature-level=max-features -q /dev/zram$unit || exit 1
+	sbin/mount.ocfs2 /dev/zram$unit dat || exit 1
 
 	install -d -m 0755 dat/localhost
 	cpio -p dat/localhost < <(data-content-gather)
 
 	umount dat
-	losetup -d $loop
+
+	#dd if=/dev/zram$unit of=boot/linux/data
+	xz -9 < /dev/zram$unit > boot/linux/data
+
+	echo 1 > /sys/block/zram$unit/reset
+	echo 0 > /sys/block/zram$unit/disksize
 
 	rm -f initrd/boot/linux/data
 
@@ -353,8 +351,9 @@ while (($# > 0)); do
 		function=root-archive-create
 		;;
 
-	--tool|-T)
-		function=tool-image-create
+	--image|-I)
+		function=system-image-create
+		image=($1 $2)
 		;;
 
 	--change|-U)

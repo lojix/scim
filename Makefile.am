@@ -51,8 +51,9 @@ libscim_la_sources = \
 	scim_data.c \
 	scim_port.c \
 	scim_site.c \
-	scim_crew.c \
 	scim_cell.c \
+	scim_cpio.c \
+	scim_crew.c \
 	scim_host.c \
 	scim_note.c \
 	scim_root.c \
@@ -65,6 +66,8 @@ libscim_la_SOURCES = \
 	$(nobase_include_HEADERS) \
 	$(libscim_la_netlink_sources) \
 	$(libscim_la_sources)
+
+libscim_la_LDFLAGS = -larchive
 
 scim_data = \
 	aide.txt \

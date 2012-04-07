@@ -8,74 +8,204 @@
 #include <sys/wait.h>
 #include <sys/prctl.h>
 #include <sys/syscall.h>
+#include <sys/ioctl.h>
+#include <sys/mman.h>
+#include <ocfs2/ocfs2.h>
+#include <ftw.h>
+#include <utime.h>
 
-int scim_cell_copy(scim_task_t _task, char* _archive)
+int scim_ocfs2_reflink(const char* _host, const char* _cell)
 {
-	char path[PATH_MAX];
+	int file;
+	int result = -1;
+	struct reflink_arguments reflink;
 
-	if(mkdir(SCIM_CELL_PATH, 0755) < 0 && errno != EEXIST) {
-		fprintf(stderr, "%s: mkdir: %s: %m\n", __func__, SCIM_CELL_PATH);
+	reflink.old_path = (__u64)_host;
+	reflink.new_path = (__u64)_cell;
+	reflink.preserve = 1;
+
+	if((file = open(_host, O_RDWR)) < 0) {
+		fprintf(stderr, "%s: open %s: %m\n", __func__, _host);
 		return -1;
 	}
 
-	snprintf(path, sizeof(path), "%s/%s", SCIM_CELL_PATH, _task->name);
+	errno = 0;
 
-	if(mkdir(path, 0755) < 0) {
-		if(errno == EEXIST) {
-			return 0;
+	if(ioctl(file, OCFS2_IOC_REFLINK, &reflink) < 0) {
+		fprintf(stderr, "%s: ioctl %s: %m\n", __func__, _cell);
+		goto done;
+	}
+
+	result = 0;
+
+	done:
+	close(file);
+	return result;
+}
+
+int scim_file_copy(const char* _host, const char* _cell)
+{
+	int file;
+	int result = -1;
+	void* host = NULL;
+	struct stat info = {};
+
+	if(stat(_host, &info) < 0) {
+		fprintf(stderr, "%s: fstat %s: %m\n", __func__, _host);
+		return -1;
+	}
+
+	if((file = open(_host, O_RDONLY)) < 0) {
+		fprintf(stderr, "%s: open %s: %m\n", __func__, _host);
+		return -1;
+	}
+
+	if(info.st_size) {
+		if((host = mmap(NULL, info.st_size, PROT_READ, MAP_SHARED, file, 0)) == MAP_FAILED) {
+			fprintf(stderr, "%s: mmap %s: %m\n", __func__, _host);
+		}
+	}
+
+	close(file);
+
+	if(info.st_size && !host) {
+		return -1;
+	}
+
+	if((file = open(_cell, O_CREAT|O_WRONLY, info.st_mode)) < 0) {
+		fprintf(stderr, "%s: open %s: %m\n", __func__, _cell);
+		goto done;
+	}
+
+	if(info.st_size) {
+		if(write(file, host, info.st_size) < 0) {
+			fprintf(stderr, "%s: write %s: %m\n", __func__, _cell);
+			goto done;
+		}
+	}
+
+	result = 0;
+
+	done:
+	if(file != -1) {
+		close(file);
+	}
+
+	munmap(host, info.st_size);
+	return result;
+}
+
+int scim_path_copy(const char* _host, const char* _cell)
+{
+	char host[PATH_MAX];
+	char cell[PATH_MAX];
+	int result = -1;
+	DIR* list;
+	struct dirent* item;
+	struct stat state;
+	struct utimbuf utimbuf;
+
+	if((list = opendir(_host)) == NULL) {
+		fprintf(stderr, "%s: opendir %s: %m\n", __func__, _host);
+		return -1;
+	}
+
+	while((item = readdir(list))) {
+		if(!strcmp(".", item->d_name) || !strcmp("..", item->d_name)) {
+			continue;
 		}
 
-		fprintf(stderr, "%s: mkdir: %s: %m\n", __func__, path);
+		snprintf(host, sizeof(host), "%s/%s", _host, item->d_name);
+		snprintf(cell, sizeof(cell), "%s/%s", _cell, item->d_name);
+
+		switch(item->d_type) {
+			case DT_REG:
+			if(!access(cell, F_OK)) {
+				break;
+			}
+
+			if(scim_ocfs2_reflink(host, cell) < 0) {
+				goto done;
+			}
+			break;
+
+			case DT_DIR:
+			if(stat(host, &state) < 0) {
+				fprintf(stderr, "%s: stat %s: %m\n", __func__, host);
+				goto done;
+			}
+
+			if(mkdir(cell, state.st_mode) < 0) {
+				if(errno != EEXIST) {
+					fprintf(stderr, "%s: mkdir %s: %m\n", __func__, cell);
+					goto done;
+				}
+			}
+
+			if(scim_path_copy(host, cell) < 0) {
+				goto done;
+			}
+
+			utimbuf.actime = state.st_atime;
+			utimbuf.modtime = state.st_mtime;
+
+			utime(cell, &utimbuf);
+			break;
+
+			case DT_LNK:
+			if(link(host, cell) < 0) {
+				fprintf(stderr, "%s: link %s: %m\n", __func__, cell);
+				goto done;
+			}
+			break;
+
+			default:
+			break;
+		}
+	}
+
+	result = 0;
+
+	done:
+	closedir(list);
+	return result;
+}
+
+int scim_cell_copy(scim_task_t _task)
+{
+	char host[PATH_MAX];
+	char cell[PATH_MAX];
+	struct stat state;
+	struct utimbuf utimbuf;
+
+	snprintf(host, sizeof(host), "%slocalhost", SCIM_CELL_PATH);
+	snprintf(cell, sizeof(cell), "%s%s", SCIM_CELL_PATH, _task->name);
+
+	if(stat(host, &state) < 0) {
+		fprintf(stderr, "%s: stat %s: %m\n", __func__, host);
 		return -1;
 	}
 
-	if(!_archive) {
-		_archive = CELL_ARCHIVE_PATH;
-	}
-
-	char* argument[] = {"bash", "-c", NULL, NULL};
-
-	argument[2] = alloca(snprintf(NULL, 0, "xzcat %s | cpio -idm", _archive));
-	sprintf(argument[2], "xzcat %s | cpio -idm 2> /dev/null", _archive);
-
-	pid_t pid = fork();
-
-	if(pid < 0) {
-		fprintf(stderr, "%s: fork: %m\n", __func__);
-		return -1;
-	}
-
-	/*
-	* Parent.
-	*/
-	if(pid) {
-		int status;
-		if((pid = wait(&status)) < 0) {
-			fprintf(stderr, "%s: wait: %m\n", __func__);
+	if(mkdir(cell, state.st_mode) < 0) {
+		if(errno != EEXIST) {
+			fprintf(stderr, "%s: mkdir %s: %m\n", __func__, cell);
 			return -1;
 		}
-
-		if(WIFEXITED(status)) {
-			if(WEXITSTATUS(status) != EXIT_SUCCESS) {
-				fprintf(stderr, "%s: filesystem setup failed\n", __func__);
-				return -1;
-			}
-		}
-
-		return 0;
 	}
 
-	/*
-	* Child.
-	*/
-	if(chdir(path) < 0) {
-		fprintf(stderr, "%s: chdir: %m\n", __func__);
+	utimbuf.actime = state.st_atime;
+	utimbuf.modtime = state.st_mtime;
+
+	if(utime(cell, &utimbuf) < 0) {
+		fprintf(stderr, "%s utime %s: %m\n", __func__, cell);
 		return -1;
 	}
 
-	execve("/bin/bash", argument, environ);
-	fprintf(stderr, "%s: execve: %m\n", __func__);
-	_exit(EXIT_FAILURE);
+	if(scim_path_copy(host, cell) < 0) {
+		return -1;
+	}
+
+	return 0;
 }
 
 int scim_cell_move(const char* _path, const char* _name)
@@ -149,7 +279,7 @@ int scim_cell_make(scim_root_t _root, scim_task_t _task, const char* _path)
 		goto done;
 	}
 
-	if(scim_cell_copy(_task, NULL) < 0) {
+	if(scim_cell_copy(_task) < 0) {
 		goto done;
 	}
 

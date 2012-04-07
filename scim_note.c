@@ -10,7 +10,7 @@ int scim_tale_open(const char* _name)
 
 	snprintf(path, sizeof(path), "var/log/%s", _name);
 
-	switch((fd = open(path, O_TRUNC|O_CLOEXEC|O_CREAT|O_RDWR, 0644))) {
+	switch((fd = open(path, O_APPEND|O_CLOEXEC|O_CREAT|O_RDWR, 0644))) {
 		case -1:
 		fprintf(stderr, "%s: open %s: %m\n", __func__, path);
 		return -1;
