@@ -32,6 +32,12 @@ char** __tool_hardware[] = {
 int scim_host_site_redo(scim_root_t _root)
 {
 	char path[PATH_MAX] = "/dev/disk/by-label/";
+	char datadev[16];
+	char execdev[16];
+	char execdir[16];
+	char loopdev[16];
+	int unit;
+	struct utsname utsname;
 	scim_site_data_t site = {
 	 {
 		.last = 1,
@@ -49,6 +55,38 @@ int scim_host_site_redo(scim_root_t _root)
 		fprintf(stderr, "%s: access %s: %m\n", __func__, path);
 		return 0;
 	}
+
+	if(scim_site_redo(site) < 0) {
+		return -1;
+	}
+
+	if(scim_loop_find(&unit) < 0) {
+		return -1;
+	}
+
+	uname(&utsname);
+
+	snprintf(path, sizeof(path), "/boot/x%d-linux-%s-glibc-%s/system", LONG_BIT, utsname.release, gnu_get_libc_version());
+	snprintf(loopdev, sizeof(loopdev), "/dev/loop%d", unit);
+	snprintf(datadev, sizeof(datadev), "/dev/loop%dp1", unit);
+	snprintf(execdev, sizeof(execdev), "/dev/loop%dp2", unit);
+	snprintf(execdir, sizeof(execdir), "/usr%d", LONG_BIT);
+
+	if(scim_loop_bind(loopdev, path, 0) < 0) {
+		return -1;
+	}
+
+	site->flag = MS_RDONLY;
+
+	site->list[0][0] = datadev;
+	site->list[0][1] = "/usr";
+	site->list[0][2] = "squashfs";
+	site->list[0][3] = NULL;
+
+	site->list[1][0] = execdev;
+	site->list[1][1] = execdir;
+	site->list[1][2] = "squashfs";
+	site->list[1][3] = NULL;
 
 	if(scim_site_redo(site) < 0) {
 		return -1;

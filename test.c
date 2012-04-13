@@ -47,8 +47,12 @@ int main(int argc, char* argv[])
 	if(scim_cpio_data_save(NULL, NULL, NULL) < 0) {
 		exit(EXIT_FAILURE);
 	}
-*/
+
 	if(scim_lzma_pack("/dev/zram0", "/tmp/data.xz") < 0) {
+		exit(EXIT_FAILURE);
+	}
+*/
+	if(scim_loop_bind("/dev/loop1", "/boot/system", 0) < 0) {
 		exit(EXIT_FAILURE);
 	}
 
