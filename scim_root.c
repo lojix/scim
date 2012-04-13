@@ -16,8 +16,8 @@
 #define _BASH					 ROOTBINDIR "bash"
 #define _DBUS_UUIDGEN			 ROOTBINDIR "dbus-uuidgen"
 #define _IPSET					ROOTSBINDIR "ipset"
-#define _IPTABLES				ROOTSBINDIR "iptables"
-#define _IP6TABLES				ROOTSBINDIR "ip6tables"
+#define _IPTABLES				ROOTSBINDIR "iptables-restore"
+#define _IP6TABLES				ROOTSBINDIR "ip6tables-restore"
 #define _SSH_KEYGEN				 ROOTBINDIR "ssh-keygen"
 #define _RNDC_CONFGEN			ROOTSBINDIR "rndc-confgen"
 
@@ -45,8 +45,8 @@ char* __file_firewall[] = {
 char** __tool_firewall[] = {
  (char*[]){_IPSET, "--flush", NULL},
  (char*[]){_IPSET, "restore", NULL},
- (char*[]){_IPTABLES, "restore", NULL},
- (char*[]){_IP6TABLES, "restore", NULL},
+ (char*[]){_IPTABLES, NULL},
+ (char*[]){_IP6TABLES, NULL},
  NULL
 };
 

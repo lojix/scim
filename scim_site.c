@@ -21,12 +21,11 @@ scim_site_data_t __host_link = {
 
 scim_site_data_t __cell_link = {
  {
-	.last = 4,
+	.last = 3,
 	.flag = MS_BIND,
 	.list = {
 		{"etc/", "/mnt/etc/", NULL, NULL},
 		{"root/", "/mnt/root/", NULL, NULL},
-		{"run/", "/mnt/run/", NULL, NULL},
 		{"srv/", "/mnt/srv/", NULL, NULL},
 		{"var/", "/mnt/var/", NULL, NULL},
 		{}

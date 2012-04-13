@@ -21,8 +21,6 @@ char* __file_modprobe[] = {
 
 char* __tool_modprobe[] = {_MODPROBE, NULL, NULL};
 
-char* __tool_mkinitrd[] = {_MKINITRD, "--change", NULL};
-
 char** __tool_hardware[] = {
  (char*[]){_UDEVD, "--daemon", "--resolve-names=never", NULL},
  (char*[]){_UDEVADM, "trigger", NULL},
@@ -34,12 +32,12 @@ char** __tool_hardware[] = {
 int scim_host_site_redo(scim_root_t _root)
 {
 	char path[PATH_MAX] = "/dev/disk/by-label/";
-	struct utsname utsname[1];
 	scim_site_data_t site = {
 	 {
-		.last = 0,
+		.last = 1,
 		.list = {
 			{path, "/vol", "btrfs", "subvolid=0"},
+			{path, "/boot", "btrfs", "subvol=boot"},
 			{}
 		}
 	 }
@@ -56,35 +54,29 @@ int scim_host_site_redo(scim_root_t _root)
 		return -1;
 	}
 
-	uname(utsname);
-	snprintf(path, sizeof(path), "/vol/os/x%d-linux-%s-glibc-%s/boot/", LONG_BIT, utsname->release, gnu_get_libc_version());
-
-	if(access(path, F_OK) != 0) {
-		fprintf(stderr, "%s: access %s: %m\n", __func__, path);
-		return 0;
-	}
-
-	site->flag = MS_BIND;
-	site->list[0][_SITE_DISK] = strdupa(path);
-	site->list[0][_SITE_PATH] = "/boot";
-	site->list[0][_SITE_TYPE] = NULL;
-	site->list[0][_SITE_FLAG] = NULL;
-
-	if(scim_site_redo(site) < 0) {
-		return -1;
-	}
-
 	return 0;
 }
 
 int scim_host_save(scim_root_t _root)
 {
-	if(access("/boot/linux/", F_OK) < 0) {
+	char path[PATH_MAX];
+	struct utsname utsname;
+
+	uname(&utsname);
+	snprintf(path, sizeof(path), "/boot/x%d-linux-%s-glibc-%s/", LONG_BIT, utsname.release, gnu_get_libc_version());
+
+	if(access(path, F_OK) < 0) {
 		errno = 0;
 		return 0;
 	}
 
-	scim_tool_call(__tool_mkinitrd, NULL, NULL, NULL);
+	if(scim_lzma_pack(NULL, NULL) < 0) {
+		return -1;
+	}
+
+	if(scim_cpio_data_save(NULL, NULL, NULL) < 0) {
+		return -1;
+	}
 
 	return 0;
 }

@@ -7,7 +7,6 @@ declare machine=`uname -m`
 declare name=`hostname`
 declare backup=false
 declare root=/
-declare bootdir=boot/linux
 declare xz="xz -z9 --check=crc32 --lzma2=dict=1MiB"
 declare cpio="cpio --create --format=newc --quiet"
 
@@ -74,7 +73,7 @@ initrd-create()
 
 	rm -fr initrd
 
-	install -d -m 0755 initrd/{boot/linux,bin,dev,lib/{firmware,scim},lib$bit/{modules/$linux,udev},mnt,net,proc,run,root,sbin,srv,sys,var/{cache,db,lib,log,run,spool,state},vol}
+	install -d -m 0755 initrd/{boot,bin,dev,lib/{firmware,scim},lib$bit/{modules/$linux,udev},mnt,net,proc,run,root,sbin,srv,sys,var/{cache,db,lib,log,run,spool,state},vol}
 	install -d -m 1777 initrd/tmp
 	
 	cp --archive --link etc initrd/
@@ -103,6 +102,23 @@ initrd-create()
 	return
 }
 
+squashfs-image-create()
+{
+	declare subdir=$1
+	declare image=${2:-$subdir}
+
+	mksquashfs $subdir boot/$image \
+		-b 1048576 \
+		-noappend \
+		-no-progress \
+		-comp xz \
+		-Xbcj x86 \
+		-Xdict-size 1024K \
+		2> /dev/null
+
+	return
+}
+
 extlinux-stanza-create()
 {
 	cat <<-EOF > boot/syslinux/${1}.conf.$$
@@ -110,8 +126,8 @@ extlinux-stanza-create()
 	 MENU DEFAULT
 	 MENU LABEL linux $linux - glibc $glibc $bit bit ${2:-$1}
 	 APPEND quiet rdinit=/lib/scim/rdinit
-	 INITRD /boot/linux/root.cpio.xz,/boot/linux/${1}.cpio.xz
-	 KERNEL /boot/linux/kernel.xz
+	 INITRD /$os/initrd,/$os/${1}.cpio.xz
+	 KERNEL /$os/kernel
 	EOF
 
 	mv boot/syslinux/${1}.conf{.$$,}
@@ -135,19 +151,19 @@ extlinux-create()
 	LABEL maiden
 	 MENU LABEL linux $linux - glibc $glibc $bit bit ${2:-default}
 	 APPEND quiet rdinit=/lib/scim/rdinit
-	 INITRD /boot/linux/root.cpio.xz
-	 KERNEL /boot/linux/kernel.xz
+	 INITRD /$os/initrd
+	 KERNEL /$os/kernel
 
 	EOF
 
-	if test -f boot/linux/${HOSTNAME}.cpio.xz; then
-		cat <<-EOF >> boot/syslinux/${1}.conf.$$
+	if test -f boot/server/${HOSTNAME}; then
+		cat <<-EOF >> boot/syslinux/${1:-extlinux}.conf.$$
 		LABEL ${HOSTNAME}
 		 MENU DEFAULT
 		 MENU LABEL linux $linux - glibc $glibc $bit bit ${HOSTNAME}
 		 APPEND quiet rdinit=/lib/scim/rdinit
-		 INITRD /boot/linux/root.cpio.xz,/boot/linux/${HOSTNAME}.cpio.xz
-		 KERNEL /boot/linux/kernel.xz
+		 INITRD /$os/initrd,/$os/server/${HOSTNAME}
+		 KERNEL /$os/kernel
 		EOF
 		fi
 
@@ -173,8 +189,8 @@ pxelinux-create()
 	LABEL linux
 	 MENU LABEL linux $linux - glibc $glibc $bit bit
 	 APPEND quiet rdinit=/lib/scim/rdinit
-	 INITRD /linux/root.cpio.xz,/linux/data.cpio.xz
-	 KERNEL /linux/kernel.xz
+	 INITRD /$os/initrd
+	 KERNEL /$os/kernel
 	EOF
 
 	mv boot/pxelinux.cfg/${1:-default}{.$$,}
@@ -182,45 +198,8 @@ pxelinux-create()
 	return
 }
 
-change-archive-create()
-{
-	install -d /tmp/boot/linux
-	mount --bind /dev/system /tmp/boot/linux
-
-	(cd /tmp; echo boot/linux/data|$cpio) | $xz > $bootdir/${HOSTNAME}.cpio.xz.$$
-
-	umount /tmp/boot/linux
-	rm -r /tmp/boot/linux
-
-	mv $bootdir/${HOSTNAME}.cpio.xz{.$$,}
-	extlinux-create
-
-	return
-}
-
-kernel-archive-create()
-{
-	cp --link --update lib$bit/modules/$linux/bzImage $bootdir/kernel.xz
-	return
-}
-
-system-image-create()
-{
-	mksquashfs ${image[0]} $bootdir/${image[1]:-${image[0]}} \
-		-b 1048576 \
-		-noappend \
-		-no-progress \
-		-comp xz \
-		-Xbcj x86 \
-		-Xdict-size 1024K \
-		2> /dev/null
-
-	return
-}
-
 data-content-gather()
 {
-	echo run
 	find etc var -xdev -path var/lib/pckg/$machine-linux -prune -o -print
 	find root -maxdepth 1
 	find srv -maxdepth 1 -xdev
@@ -228,46 +207,58 @@ data-content-gather()
 	return
 }
 
-data-image-create()
-{
-	declare unit=0
-	declare size=$((1048576 * 48))
-
-	install -d -m 0755 dat
-	rm -f boot/linux/data
-
-	echo $size > /sys/block/zram$unit/disksize
-
-	sbin/mkfs.ocfs2 -b 4096 -F -J size=4M -L data -M local -T mail --fs-feature-level=max-features -q /dev/zram$unit || exit 1
-	sbin/mount.ocfs2 /dev/zram$unit dat || exit 1
-
-	install -d -m 0755 dat/localhost
-	cpio -p dat/localhost < <(data-content-gather)
-
-	umount dat
-
-	#dd if=/dev/zram$unit of=boot/linux/data
-	xz -9 < /dev/zram$unit > boot/linux/data
-
-	echo 1 > /sys/block/zram$unit/reset
-	echo 0 > /sys/block/zram$unit/disksize
-
-	rm -f initrd/boot/linux/data
-
-	return
-}
-
 data-archive-create()
 {
-	$cpio < <(echo boot/linux/data) | $xz > $bootdir/data.cpio.xz
+	declare zram=zram3
+	declare size=$((1048576 * 32))
+	declare cylinder=$((size / 4096))
+	declare unit=1
+
+	echo 1 > /sys/block/$zram/reset
+	echo $size > /sys/block/$zram/disksize
+
+	sfdisk --no-reread -f -u S -C $cylinder -H 8 -S 1 /dev/$zram <<-EOF
+	1,16376,,
+	16384,16384,,
+	32768,16384,,
+	49152,16384,,
+	EOF
+
+	loop=`losetup -P -f --show /dev/$zram`
+	install -d -m 0755 initrd/{boot,etc,root,srv,var}
+
+	for subdir in etc root srv var; do
+		mke2fs -b 1024 -L ares:$subdir -q -t ext4 ${loop}p$unit
+		mount ${loop}p$unit initrd/$subdir || exit 1
+		((unit++))
+		done
+
+	cpio -p initrd < <(data-content-gather)
+	sync
+
+	for subdir in etc root srv var; do
+		mountpoint -q initrd/$subdir || continue
+		until umount initrd/$subdir; do sleep 1; done; done
+
+	$xz < /dev/$zram > initrd/boot/sysdata
+
+	if test ${#1} -ne 0; then
+		(cd initrd && $cpio < <(echo boot/sysdata)) > boot/$1; fi
+
+	echo 1 > /sys/block/$zram/reset
+	echo 0 > /sys/block/$zram/disksize
+
+	losetup -d $loop
+
 	return
 }
 
-root-image-create()
+boot-archive-create()
 {
 	initrd-create
+	data-archive-create
 
-	mksquashfs bin lib lib$bit sbin $bootdir/root \
+	mksquashfs bin lib lib$bit sbin initrd/boot/sysroot \
 		-b 1048576 \
 		-noappend \
 		-no-progress \
@@ -275,7 +266,6 @@ root-image-create()
 		-Xbcj x86 \
 		-Xdict-size 1024K \
 		-p "adm d 755 root root" \
-		-p "dat d 755 root root" \
 		-p "boot d 755 root root" \
 		-p "config d 755 root root" \
 		-p "dev d 755 root root" \
@@ -299,34 +289,42 @@ root-image-create()
 		-p "vol d 755 root root" \
 		2> /dev/null
 
+	(cd initrd && $cpio < <(find -mindepth 1 -printf "%P\n")) | $xz > boot/initrd.$$
+	mv boot/initrd{.$$,}
+
+	cp --link --update lib$bit/modules/$linux/bzImage boot/kernel
+
 	return
 }
 
-root-archive-create()
+ware-image-create()
 {
-	rm -f initrd/boot/linux/{data,root}
-	ln boot/linux/{data,root} initrd/boot/linux/
+	squashfs-image-create usr
+	squashfs-image-create usr$bit x$bit
 
-	cd initrd
-	$cpio -O ../$bootdir/root.cpio.$$ < <(find -mindepth 1 -printf "%P\n")
-	cd ..
+	declare sector=(`stat -c %b boot/{usr,x64}`)
+	declare offset=(8 $((${sector[0]} + 8)))
+	declare count=$((${sector[0]} + ${sector[1]} + 8))
+	declare cylinder=$((count / 8))
 
-	$xz $bootdir/root.cpio.$$
-	mv $bootdir/root.cpio.{$$.,}xz
+	dd if=/dev/zero of=boot/system bs=512 count=$count
 
-	cp --link --update lib$bit/modules/$linux/bzImage $bootdir/kernel.xz
+	sfdisk --no-reread -f -u S -C $cylinder -H 8 -S 1 boot/system <<-EOF
+	${offset[0]},${sector[0]},,
+	${offset[1]},,,
+	EOF
 
+	dd if=boot/usr of=boot/system bs=512 seek=${offset[0]}
+	dd if=boot/x$bit of=boot/system bs=512 seek=${offset[1]}
+
+	rm -f boot/{usr,x$bit}
+ 
 	return
 }
 
 all-archive-create()
 {
-	data-image-create
-	data-archive-create
-
-	root-image-create
-	root-archive-create
-
+	boot-archive-create
 	extlinux-create
 	pxelinux-create
 
@@ -339,25 +337,16 @@ while (($# > 0)); do
 		function=all-archive-create
 		;;
 
-	--kernel|-K)
-		function=kernel-archive-create
+	--boot|-B)
+		function=boot-archive-create
 		;;
 
-	--maiden|-M)
-		function=maiden-archive-create
+	--data|-D)
+		function=data-archive-create
 		;;
 
-	--system|-S)
-		function=root-archive-create
-		;;
-
-	--image|-I)
-		function=system-image-create
-		image=($1 $2)
-		;;
-
-	--change|-U)
-		function=change-archive-create
+	--ware|-W)
+		function=ware-image-create
 		;;
 
 	--backup)
@@ -388,8 +377,9 @@ while (($# > 0)); do
 	done
 
 os=x$bit-linux-$linux-glibc-$glibc
+bootdir=boot/$os
 
 cd $root
-install -d -m 0755 $bootdir
+install -d -m 0755 boot
 $function
 exit

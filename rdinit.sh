@@ -22,8 +22,9 @@ system-init()
 	mount -t devtmpfs none dev
 	mount -t proc none proc
 	mount -t sysfs none sys
+	mount -o mode=0755 -t tmpfs none run
 
-	install -d -m 0755 dev/{pts,system}
+	install -d -m 0755 dev/pts
 	install -d -m 1777 dev/{mqueue,shm}
 
 	ln -s /proc/self/fd dev/fd
@@ -99,18 +100,20 @@ network-setup()
 
 rootfs-setup()
 {
-	echo "rxdsk attach 0 $(stat -c %b boot/linux/root)" > proc/rxctl
-	echo "$((48 * 1048576))" > sys/block/zram0/disksize
+	declare unit=1
 
-	xz -dc < boot/linux/data > dev/zram0
-	dd if=boot/linux/root of=dev/rxd0
+	echo "rxdsk attach 0 $(stat -c %b boot/sysroot)" > proc/rxctl
+	echo "$((32 * 1048576))" > sys/block/zram0/disksize
 
+	dd if=boot/sysroot of=dev/rxd0
 	mount -r -t squashfs /dev/rxd0 mnt
-	mount -t ocfs2 /dev/zram0 mnt/dat
-	mount -o mode=0755 -t tmpfs none mnt/run
+
+	xz -dc < boot/sysdata > dev/zram0
+	losetup -P /dev/loop0 /dev/zram0
 
 	for dir in etc root srv var; do
-		mount --bind -n mnt/dat/localhost/${dir##*/} mnt/$dir
+		mount -n /dev/loop0p$unit mnt/$dir
+		((unit++))
 		done
 
 	return
@@ -121,11 +124,11 @@ rootfs-switch()
 	#
 	# Move already mounted /boot to the new /.
 	#
-	for mountpoint in boot; do
-		if mountpoint -q $mountpoint; then
-			mount --move mountpoint mnt/$mountpoint
-			fi
-		done
+	#for mountpoint in boot; do
+	#	if mountpoint -q $mountpoint; then
+	#		mount --move mountpoint mnt/$mountpoint
+	#		fi
+	#	done
 
 	#
 	# Switch to the new root filesystem.

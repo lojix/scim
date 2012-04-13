@@ -38,11 +38,7 @@
 #endif
 
 #ifndef SCIM_CELL_PATH
-#define SCIM_CELL_PATH "/dat/"
-#endif
-
-#ifndef CELL_ARCHIVE_PATH
-#define CELL_ARCHIVE_PATH "/lib/maiden.cpio.xz"
+#define SCIM_CELL_PATH "/vol/cell/"
 #endif
 
 #define _FORK_CELL CLONE_NEWNS|CLONE_NEWUTS|CLONE_NEWIPC|CLONE_NEWPID|CLONE_NEWNET|SIGCHLD

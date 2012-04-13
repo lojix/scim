@@ -55,6 +55,8 @@ libscim_la_sources = \
 	scim_cpio.c \
 	scim_crew.c \
 	scim_host.c \
+	scim_loop.c \
+	scim_lzma.c \
 	scim_note.c \
 	scim_root.c \
 	scim_task.c \
@@ -67,7 +69,7 @@ libscim_la_SOURCES = \
 	$(libscim_la_netlink_sources) \
 	$(libscim_la_sources)
 
-libscim_la_LDFLAGS = -larchive
+libscim_la_LDFLAGS = -larchive -llzma
 
 scim_data = \
 	aide.txt \

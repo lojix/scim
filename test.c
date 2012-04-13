@@ -2,7 +2,7 @@
 #include <net/if.h>
 
 int main(int argc, char* argv[])
-{
+{/*
 	scim_port_data_t port;
 
 	if(argc > 1) {
@@ -45,6 +45,10 @@ int main(int argc, char* argv[])
 	printf("%d\n", LONG_BIT);
 
 	if(scim_cpio_data_save(NULL, NULL, NULL) < 0) {
+		exit(EXIT_FAILURE);
+	}
+*/
+	if(scim_lzma_pack("/dev/zram0", "/tmp/data.xz") < 0) {
 		exit(EXIT_FAILURE);
 	}
 

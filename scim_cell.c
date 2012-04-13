@@ -124,7 +124,7 @@ int scim_path_copy(const char* _host, const char* _cell)
 				break;
 			}
 
-			if(scim_ocfs2_reflink(host, cell) < 0) {
+			if(scim_file_copy(host, cell) < 0) {
 				goto done;
 			}
 			break;
@@ -154,8 +154,10 @@ int scim_path_copy(const char* _host, const char* _cell)
 
 			case DT_LNK:
 			if(link(host, cell) < 0) {
-				fprintf(stderr, "%s: link %s: %m\n", __func__, cell);
-				goto done;
+				if(errno != EEXIST) {
+					fprintf(stderr, "%s: link %s: %m\n", __func__, cell);
+					goto done;
+				}
 			}
 			break;
 
