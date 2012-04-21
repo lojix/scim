@@ -25,8 +25,8 @@ char** __halt_sundries[] = {
 
 char** __halt_shutdown[] = {
  [_SHUTDOWN]	= (char*[]){_HALT, "-f", "-h", "-i", "-n", NULL},
- [_SHUTOFF]		= (char*[]){_POWEROFF, "-f", "-h", "-i", "-n", NULL},
- [_RESTART]		= (char*[]){_REBOOT, "-f", "-h", "-i", "-n", NULL},
+ [_SHUTOFF]	= (char*[]){_POWEROFF, "-f", "-h", "-i", "-n", NULL},
+ [_RESTART]	= (char*[]){_REBOOT, "-f", "-h", "-i", "-n", NULL},
  NULL
 };
 
@@ -52,7 +52,7 @@ int main(int argc, char* argv[])
 	}
 
 	//nanosleep((struct timespec[]){{.tv_sec = 5}}, NULL);
-
+	//scim_loop_free("/dev/loop1");
 	scim_tool_call(__halt_shutdown[halt], NULL, NULL, NULL);
 
 	_exit(EXIT_SUCCESS);

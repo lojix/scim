@@ -14,16 +14,16 @@ exec > $srcdir/scim/code.h
 echo "typedef enum scim_task_name_t {"
 
 while read -a line; do
-	NAME=$(echo ${line[0]##*/}|tr '[:lower:]' '[:upper:]')
-	NAME=${NAME%%-*}
+	NAME=$(echo ${line[0]}|tr '[:lower:]' '[:upper:]')
+	NAME=${NAME//-/_}
 	echo -e " _TASK_$NAME,"
 	done < $task_list
 
 code=0
 
 while read -a line; do
-	NAME=$(echo ${line[0]##*/}|tr '[:lower:]' '[:upper:]')
-	NAME=${NAME%%-*}
+	NAME=$(echo ${line[0]}|tr '[:lower:]' '[:upper:]')
+	NAME=${NAME//-/_}
 	echo -e " _TASK_$NAME,"
 	((code++))
 	done < $host_list
@@ -72,7 +72,7 @@ echo "typedef enum scim_cell_code_t {"
 while read -a line; do
 	CODE=$(printf "%04X" $code)
 	NAME=$(echo ${line[0]##*/}|tr '[:lower:]' '[:upper:]')
-	NAME=${NAME%%-*}
+	NAME=${NAME//-/_}
 
 	echo -e " _CELL_$CODE,"
 	((code++))
@@ -187,18 +187,17 @@ echo "#define CELL_TASK(__code__) __task + _CELL_CODE_MIN + _CELL_ ## __code__"
 echo
 
 #
-# Fact names.
+# Task names.
 #
-while read name path part form; do
-	NAME=${name%%-*}
+while read name part form path file flag; do
+	NAME=${name//-/_}
 	NAME=$(echo ${NAME##*/}|tr '[:lower:]' '[:upper:]')
-	name=${name##*/}
 
 	printf "#define %-24s \"%s\"\n" _TASK_NAME_$NAME $name
 	done < $task_list
 
 while read name kind role duty zone; do
-	NAME=${name%%-*}
+	NAME=${name//-/_}
 	NAME=$(echo ${NAME##*/}|tr '[:lower:]' '[:upper:]')
 
 	printf "#define %-24s \"%s\"\n" _TASK_NAME_$NAME $name
@@ -206,17 +205,17 @@ while read name kind role duty zone; do
 echo
 
 #
-# Fact path.
+# Task path.
 #
-while read name path part form flag; do
-	NAME=${name%%-*}
+while read name part form path file flag; do
+	NAME=${name//-/_}
 	NAME=$(echo ${NAME##*/}|tr '[:lower:]' '[:upper:]')
 
-	printf "#define %-24s %11s \"$name\"\n" _TASK_PATH_$NAME $path
+	printf "#define %-24s %11s \"$file\"\n" _TASK_PATH_$NAME $path
 	done < $task_list
 
 while read name kind role duty zone; do
-	NAME=${name%%-*}
+	NAME=${name//-/_}
 	NAME=$(echo ${NAME##*/}|tr '[:lower:]' '[:upper:]')
 
 	printf "#define %-24s ROOTSBINDIR \"srvcd\"\n" _TASK_PATH_$NAME
@@ -225,20 +224,20 @@ echo
 
 
 #
-# Fact flag.
+# Task flag.
 #
-while read task path part form flag; do
-	name=${task%%-*}
-	tag=$(echo ${name##*/}|tr '[:lower:]' '[:upper:]')
+while read name part form path file flag; do
+	NAME=${name//-/_}
+	NAME=$(echo ${NAME##*/}|tr '[:lower:]' '[:upper:]')
 
 	if test ${#flag} -ne 0; then
-		printf "#define %-24s \"%s\"\n" _TASK_FLAG_${tag} "$flag"
+		printf "#define %-24s \"%s\"\n" _TASK_FLAG_${NAME} "$flag"
 	else
-		echo -e "#define _TASK_FLAG_${tag}"; fi
+		echo -e "#define _TASK_FLAG_${NAME}"; fi
 	done < $task_list
 
 while read name kind role duty zone; do
-	NAME=${name%%-*}
+	NAME=${name//-/_}
 	NAME=$(echo ${NAME##*/}|tr '[:lower:]' '[:upper:]')
 
 	echo -e "#define _TASK_FLAG_$NAME"
@@ -251,9 +250,9 @@ echo
 for FIELD in NAME PATH FLAG; do
 	code=0
 
-	while read task path part form flag; do
+	while read name part form path file flag; do
 		CODE=$(printf "%04X" $code)
-		NAME=${task%%-*}
+		NAME=${name//-/_}
 		NAME=$(echo ${NAME##*/}|tr '[:lower:]' '[:upper:]')
 
 		echo -e "#define _TASK_${FIELD}_$CODE _TASK_${FIELD}_$NAME"
@@ -262,7 +261,7 @@ for FIELD in NAME PATH FLAG; do
 
 	while read name kind role duty zone; do
 		CODE=$(printf "%04X" $code)
-		NAME=${name%%-*}
+		NAME=${name//-/_}
 		NAME=$(echo ${NAME##*/}|tr '[:lower:]' '[:upper:]')
 
 		echo -e "#define _TASK_${FIELD}_$CODE _TASK_${FIELD}_$NAME"
@@ -276,12 +275,14 @@ for FIELD in NAME PATH FLAG; do
 echo "#define __AIDE__ \\"
 
 while read TASK list; do
+	TASK=${TASK//-/_}
 	TASK=$(echo $TASK|tr '[:lower:]' '[:upper:]')
 	aide=0
 
 	printf " %-24s = {(scim_task_t[]){" "[_TASK_$TASK]"
 
 	for AIDE in $list; do
+		AIDE=${AIDE//-/_}
 		AIDE=$(echo $AIDE|tr '[:lower:]' '[:upper:]')
 
 		test $aide -ne 0 && echo -n ", "
@@ -300,12 +301,14 @@ printf " %-24s = {}\n\n" "[_TASK_CODE_END]"
 echo "#define __WARD__ \\"
 
 while read TASK list; do
+	TASK=${TASK//-/_}
 	TASK=$(echo $TASK|tr '[:lower:]' '[:upper:]')
 	ward=0
 
 	printf " %-24s = {(scim_task_t[]){" "[_TASK_$TASK]"
 
 	for WARD in $list; do
+		WARD=${WARD//-/_}
 		WARD=$(echo $WARD|tr '[:lower:]' '[:upper:]')
 
 		test $ward -ne 0 && echo -n ", "
@@ -352,9 +355,9 @@ code=0
 
 echo "#define __TASK__ \\"
 
-while read name path FORM MODE flag; do
+while read name FORM MODE path file flag; do
 	CODE=$(printf "%04X" $code)
-	NAME=${name%%-*}
+	NAME=${name//-/_}
 	NAME=$(echo ${NAME##*/}|tr '[:lower:]' '[:upper:]')
 
 	echo -e " {_TASK_$CODE, _TASK_NAME_$CODE, _TASK_PATH_$CODE \" \" _TASK_FLAG_$CODE, _SOUL_$CODE, _SECT_$CODE, __form + _FORM_$FORM, __mode + _MODE_$MODE, __aide + _TASK_$CODE, __ward + _TASK_$CODE, __stat + _TASK_$CODE}, \\"
@@ -366,7 +369,7 @@ cell=0
 while read name kind role duty zone; do
 	CODE=$(printf "%04X" $code)
 	CELL=$(printf "%04X" $cell)
-	NAME=${name%%-*}
+	NAME=${name//-/_}
 	NAME=$(echo ${NAME##*/}|tr '[:lower:]' '[:upper:]')
 
 	case $kind in
@@ -425,6 +428,7 @@ while read POST crew; do
 
 	for TASK in $crew; do
 		TASK=$(echo $TASK|tr '[:lower:]' '[:upper:]')
+		TASK=${TASK//-/_}
 
 		test $task -ne 0 && echo -n ", "
 		echo -n "__task + _TASK_$TASK"
@@ -473,7 +477,7 @@ echo "#define __CELL__ \\"
 while read name KIND ROLE DUTY ZONE; do
 	CODE=$(printf "%04X" $code)
 	TEAM=$(printf "%04X" $team)
-	NAME=${name%%-*}
+	NAME=${name//-/_}
 	NAME=$(echo ${NAME##*/}|tr '[:lower:]' '[:upper:]')
 
 	case $kind in

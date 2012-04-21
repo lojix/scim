@@ -57,13 +57,13 @@ int scim_cpio_data_save(const char* _source, const char* _target, const char* _a
 	sprintf(system, "x%d-linux-%s-glibc-%s", LONG_BIT, utsname.release, gnu_get_libc_version());
 
 	if(!_source) {
-		char* path = alloca(snprintf(NULL, 0, "/boot/%s/sysdata", system));
-		sprintf(path, "/boot/%s/sysdata", system);
+		char* path = alloca(snprintf(NULL, 0, "/vol/os/%s/boot/sysdata", system));
+		sprintf(path, "/vol/os/%s/boot/sysdata", system);
 		_source = path;
 	}
 
 	if(!_target) {
-		_target = _source;
+		_target = "boot/sysdata";
 	}
 
 	if(!_archive) {
@@ -71,8 +71,8 @@ int scim_cpio_data_save(const char* _source, const char* _target, const char* _a
 		char* path;
 
 		gethostname(host, sizeof(host));
-		path = alloca(snprintf(NULL, 0, "/boot/%s/%s", system, host));
-		sprintf(path,  "/boot/%s/%s", system, host);
+		path = alloca(snprintf(NULL, 0, "/vol/os/%s/boot/%s", system, host));
+		sprintf(path,  "/vol/os/%s/boot/%s", system, host);
 		_archive = path;
 	}
 
@@ -110,7 +110,7 @@ int scim_cpio_data_save(const char* _source, const char* _target, const char* _a
 	}
 
 	archive_entry_copy_sourcepath(object, _source);
-	archive_entry_copy_pathname(object, _source);
+	archive_entry_copy_pathname(object, _target);
 
 	if(archive_read_disk_entry_from_file(source, object, file, &info) != ARCHIVE_OK) {
 		fprintf(stdout, "%s: archive_read_disk_entry_from_file %s: %s\n", __func__, _source,

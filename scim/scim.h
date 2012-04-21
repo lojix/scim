@@ -38,7 +38,7 @@
 #endif
 
 #ifndef SCIM_CELL_PATH
-#define SCIM_CELL_PATH "/vol/cell/"
+#define SCIM_CELL_PATH "/cell/"
 #endif
 
 #define _FORK_CELL CLONE_NEWNS|CLONE_NEWUTS|CLONE_NEWIPC|CLONE_NEWPID|CLONE_NEWNET|SIGCHLD
@@ -239,7 +239,7 @@ typedef char scim_kind_term_t[16];
 typedef char scim_role_term_t[16];
 typedef char scim_duty_term_t[16];
 typedef char scim_port_term_t[32];
-typedef char scim_port_call_t[20];
+typedef char scim_link_code_t[20];
 typedef char scim_site_term_t[16];
 typedef char scim_post_term_t[32];
 typedef char scim_zone_term_t[16];
@@ -322,15 +322,8 @@ typedef struct scim_site_t {
  scim_site_term_t term;
 }* scim_site_t;
 
-/*typedef struct scim_card_t {
- scim_card_code_t code;
- scim_card_term_t name;
- scim_host_code_t host;
- unsigned slot;
-}* scim_card_t;*/
-
 typedef struct scim_link_data_t {
- scim_port_call_t port;
+ scim_link_code_t code;
  scim_lane_name_t lane;
 } scim_link_data_t[1];
 
@@ -349,14 +342,14 @@ typedef struct scim_port_data_t {
  char heap[BUFSIZ];
 } scim_port_data_t[1];
 
-typedef char* (*scim_site_item_t);
-typedef char* (*scim_site_list_t)[_SITE_CODE_SUM];
+typedef const char* (*scim_site_item_t);
+typedef const char* (*scim_site_list_t)[_SITE_CODE_SUM];
 
 typedef struct scim_site_data_t {
  int last;
  unsigned size;
  unsigned flag;
- char* list[_SITE_CURB_SUM][_SITE_CODE_SUM] __attribute__((aligned));
+ const char* list[_SITE_CURB_SUM][_SITE_CODE_SUM] __attribute__((aligned));
  char data[BUFSIZ];
 } scim_site_data_t[1];
 
@@ -436,6 +429,7 @@ typedef struct scim_root_t {
  int timer;
  unsigned mark;
  pid_t pawn;
+ int kill;
  int stay;
  int tend;
  int omit;
@@ -450,6 +444,8 @@ typedef struct scim_root_t {
  long long loop;
  scim_halt_data_t halt;
 }* scim_root_t;
+
+typedef int (*scim_link_call_t)(scim_link_data_t, void*);
 
 extern struct scim_form_t __form[];
 extern struct scim_mode_t __mode[];

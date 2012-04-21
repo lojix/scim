@@ -5,6 +5,30 @@
 #include <unistd.h>
 #include <sys/wait.h>
 
+/*static int scim_turf_prep(scim_root_t _root)
+{
+	char* path[] = {(char [PATH_MAX]){}, (char [PATH_MAX]){}, NULL};
+
+	snprintf(path[0], PATH_MAX, "%s%s/", SCIM_DATA_PATH, _root->task->host->name);
+	snprintf(path[1], PATH_MAX, "%s%s/", SCIM_CELL_PATH, _root->task->host->name);
+
+	for(int i = 0; path[i]; i++) {
+		for(char* part = strchr(&path[i][1], '/'); part;) {
+			*part = '\0';
+
+			if(mkdir(path[i], 0755) < 0 && errno != EEXIST) {
+				fprintf(stderr, "%s: mkdir %s: %m\n", __func__, path[i]);
+				return -1;
+			}
+
+			*part++ = '/';
+			part = strchr(part, '/');
+		}
+	}
+
+	return 0;
+}*/
+
 int scim_tool_call(char* _tool[], char* _environ[], const char* _input, const char* _output)
 {
 	int result = -1;

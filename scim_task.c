@@ -1,6 +1,7 @@
 #include "scim/scim.h"
 #include <string.h>
 #include <signal.h>
+#include <time.h>
 #include <fcntl.h>
 #include <sys/syscall.h>
 #include <sys/wait.h>
@@ -117,7 +118,7 @@ int scim_task_reap(scim_root_t _root)
 			}
 		}
 
-		if(_root->step == __step_work && task && *task) {
+		if(_root->step != __step_done && task && *task) {
 			switch((*task)->stat->step->code) {
 				case _STEP_DOWN:
 				case _STEP_WAKE:
@@ -160,7 +161,7 @@ int scim_task_tend(scim_root_t _root, scim_task_t _task)
 
 	switch(_root->step->code) {
 		case _STEP_WAKE:
-		goto done;
+		//goto done;
 
 		case _STEP_WORK:
 		switch(dead) {
@@ -522,6 +523,7 @@ int scim_task_wake(scim_root_t _root, scim_task_t _task)
 		return result;
 	}
 
+	char path[PATH_MAX];
 	wordexp_t argv[1];
 
 	scim_task_mark(_root->mark);
@@ -529,17 +531,30 @@ int scim_task_wake(scim_root_t _root, scim_task_t _task)
 
 	switch(_task->form->code) {
 		case _FORM_CELL:
-		case _FORM_ROOT:
 		close(cell[1]);
 		close(root[0]);
 
 		_task->stat->hear = cell[0];
 		_task->stat->tell = root[1];
 
-		scim_tale_open(_task->name);
+		snprintf(path, sizeof(path), "%s%s/var/log/%s", SCIM_CELL_PATH, _task->name, _task->name);
+
+		if(scim_log_open(path) < 0) {
+			goto fail;
+		}
+		break;
+
+		case _FORM_ROOT:
 		break;
 
 		default:
+		close(0);
+		open("/dev/null", O_WRONLY);
+		close(1);
+		open("/dev/null", O_RDONLY);
+		close(2);
+		open("/dev/null", O_RDONLY);
+
 		if(_task->sect > 0) {
 			setgid(_task->sect);
 		}
@@ -555,7 +570,7 @@ int scim_task_wake(scim_root_t _root, scim_task_t _task)
 
 	*_root = *((struct scim_root_t[1]){});
 
-	if(_task->form == __form_cell && scim_cell_make(_root, _task, NULL) < 0) {
+	if(_task->form == __form_cell && scim_cell_wake(_root, _task) < 0) {
 		goto fail;
 	}
 
@@ -568,13 +583,41 @@ int scim_task_wake(scim_root_t _root, scim_task_t _task)
 	_exit(EXIT_FAILURE);
 }
 
+int scim_task_wake_sure(scim_root_t _root, scim_task_t _task)
+{
+	int result = -1;
+
+	if(scim_task_wake(_root, _task) < 0) {
+		return -1;
+	}
+
+	for(;;) {
+		nanosleep((struct timespec[]){{0, 15000000}}, NULL);
+
+		scim_task_reap(_root);
+		scim_task_tend(_root, _task);
+
+		if(_task->stat->step == __step_work) {
+			break;
+		}
+
+		if(_task->stat->step == __step_done) {
+			goto done;
+		}
+	}
+
+	result = 0;
+	done:
+	return result;
+}
+
 int scim_task_kill(scim_root_t _root, scim_task_t _task)
 {
 	if(_task->stat->step == __step_down) {
 		return 0;
 	}
 
-	if(kill(_task->stat->pawn, SIGTERM) < 0) {
+	if(kill(_task->stat->pawn, _root->kill) < 0) {
 		if(errno != ESRCH) {
 			fprintf(stderr, "%s: kill: %d: %m\n", __func__, _task->stat->pawn);
 			return -1;

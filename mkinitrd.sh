@@ -126,8 +126,8 @@ extlinux-stanza-create()
 	 MENU DEFAULT
 	 MENU LABEL linux $linux - glibc $glibc $bit bit ${2:-$1}
 	 APPEND quiet rdinit=/lib/scim/rdinit
-	 INITRD /$os/initrd,/$os/${1}.cpio.xz
-	 KERNEL /$os/kernel
+	 INITRD /boot/initrd,/boot/${1}.cpio.xz
+	 KERNEL /boot/kernel
 	EOF
 
 	mv boot/syslinux/${1}.conf{.$$,}
@@ -151,8 +151,8 @@ extlinux-create()
 	LABEL maiden
 	 MENU LABEL linux $linux - glibc $glibc $bit bit ${2:-default}
 	 APPEND quiet rdinit=/lib/scim/rdinit
-	 INITRD /$os/initrd
-	 KERNEL /$os/kernel
+	 INITRD /boot/initrd
+	 KERNEL /boot/kernel
 
 	EOF
 
@@ -162,8 +162,8 @@ extlinux-create()
 		 MENU DEFAULT
 		 MENU LABEL linux $linux - glibc $glibc $bit bit ${HOSTNAME}
 		 APPEND quiet rdinit=/lib/scim/rdinit
-		 INITRD /$os/initrd,/$os/server/${HOSTNAME}
-		 KERNEL /$os/kernel
+		 INITRD /boot/initrd,/boot/server/${HOSTNAME}
+		 KERNEL /boot/kernel
 		EOF
 		fi
 
@@ -189,8 +189,8 @@ pxelinux-create()
 	LABEL linux
 	 MENU LABEL linux $linux - glibc $glibc $bit bit
 	 APPEND quiet rdinit=/lib/scim/rdinit
-	 INITRD /$os/initrd
-	 KERNEL /$os/kernel
+	 INITRD /boot/initrd
+	 KERNEL /boot/kernel
 	EOF
 
 	mv boot/pxelinux.cfg/${1:-default}{.$$,}
@@ -267,6 +267,7 @@ boot-archive-create()
 		-Xdict-size 1024K \
 		-p "adm d 755 root root" \
 		-p "boot d 755 root root" \
+		-p "cell d 755 root root" \
 		-p "config d 755 root root" \
 		-p "dev d 755 root root" \
 		-p "etc d 755 root root" \
@@ -275,7 +276,6 @@ boot-archive-create()
 		-p "lib$bit/modules d 755 root root" \
 		-p "media d 755 root root" \
 		-p "mnt d 755 root root" \
-		-p "net d 755 root root" \
 		-p "proc d 755 root root" \
 		-p "root d 755 root root" \
 		-p "run d 755 root root" \

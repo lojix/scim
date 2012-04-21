@@ -13,12 +13,14 @@
 #include <sys/syscall.h>
 #include "scim/netlink.h"
 
-#define _BASH					 ROOTBINDIR "bash"
+#define _BASH				 	 ROOTBINDIR "bash"
 #define _DBUS_UUIDGEN			 ROOTBINDIR "dbus-uuidgen"
 #define _IPSET					ROOTSBINDIR "ipset"
-#define _IPTABLES				ROOTSBINDIR "iptables-restore"
-#define _IP6TABLES				ROOTSBINDIR "ip6tables-restore"
-#define _SSH_KEYGEN				 ROOTBINDIR "ssh-keygen"
+#define _IPTABLES_SAVE			ROOTSBINDIR "iptables-save"
+#define _IPTABLES_RESTORE		ROOTSBINDIR "iptables-restore"
+#define _IP6TABLES_SAVE			ROOTSBINDIR "ip6tables-save"
+#define _IP6TABLES_RESTORE		ROOTSBINDIR "ip6tables-restore"
+#define _SSH_KEYGEN			 	 ROOTBINDIR "ssh-keygen"
 #define _RNDC_CONFGEN			ROOTSBINDIR "rndc-confgen"
 
 #define _IPSET_FILE				LOCALSTATEDIR "state/ipset"
@@ -34,7 +36,6 @@ char** __tool_sundries[] = {
  NULL
 };
 
-// (char*[]){_RNDC_CONFGEN, "-a", "-k", "rndc", "-c", "/srv/bind/etc/rndc.key", NULL},
 char* __file_firewall[] = {
  _IPSET_FILE,
  _IPTABLES_FILE,
@@ -42,11 +43,17 @@ char* __file_firewall[] = {
  NULL
 };
 
-char** __tool_firewall[] = {
- (char*[]){_IPSET, "--flush", NULL},
+char** __load_firewall[] = {
  (char*[]){_IPSET, "restore", NULL},
- (char*[]){_IPTABLES, NULL},
- (char*[]){_IP6TABLES, NULL},
+ (char*[]){_IPTABLES_RESTORE, NULL},
+ (char*[]){_IP6TABLES_RESTORE, NULL},
+ NULL
+};
+
+char** __save_firewall[] = {
+ (char*[]){_IPSET, "save", NULL},
+ (char*[]){_IPTABLES_SAVE, NULL},
+ (char*[]){_IP6TABLES_SAVE, NULL},
  NULL
 };
 
@@ -105,6 +112,8 @@ static int scim_sign_heed(scim_root_t _root)
 				_root->step = __step_done;
 
 				fprintf(stderr, "%s rebooting!\n", _root->task->name);
+
+				scim_root_save(_root);
 			}
 			break;
 
@@ -114,6 +123,8 @@ static int scim_sign_heed(scim_root_t _root)
 				_root->step = __step_done;
 
 				fprintf(stderr, "%s powering down!\n", _root->task->name);
+
+				scim_root_save(_root);
 			}
 			break;
 
@@ -184,30 +195,6 @@ static int scim_deed_wait(scim_root_t _root)
 	return 0;
 }
 
-/*static int scim_turf_prep(scim_root_t _root)
-{
-	char* path[] = {(char [PATH_MAX]){}, (char [PATH_MAX]){}, NULL};
-
-	snprintf(path[0], PATH_MAX, "%s%s/", SCIM_DATA_PATH, _root->task->host->name);
-	snprintf(path[1], PATH_MAX, "%s%s/", SCIM_CELL_PATH, _root->task->host->name);
-
-	for(int i = 0; path[i]; i++) {
-		for(char* part = strchr(&path[i][1], '/'); part;) {
-			*part = '\0';
-
-			if(mkdir(path[i], 0755) < 0 && errno != EEXIST) {
-				fprintf(stderr, "%s: mkdir %s: %m\n", __func__, path[i]);
-				return -1;
-			}
-
-			*part++ = '/';
-			part = strchr(part, '/');
-		}
-	}
-
-	return 0;
-}*/
-
 static int scim_wake_prep(scim_root_t _root)
 {
 	if((_root->epoll = epoll_create1(EPOLL_CLOEXEC)) < 0) {
@@ -267,14 +254,6 @@ static int scim_wake_prep(scim_root_t _root)
 		return -1;
 	}
 
-	//char* path = alloca(snprintf(NULL, 0, "%smail", _root->path));
-	//sprintf(path, "%smail", _root->path);
-
-	//if((_root->stub = inotify_add_watch(_root->inotify, path, IN_CLOSE_WRITE)) < 0) {
-	//	fprintf(stderr, "Error %s: inotify_add_watch: %m\n", __func__);
-	//	return -1;
-	//}
-
 	event.events = EPOLLIN;
 	event.data.u32 = _HEED_FILE;
 
@@ -290,40 +269,13 @@ static int scim_wake_prep(scim_root_t _root)
 	return 0;
 }
 
-/*int scim_team_read(scim_root_t _root, const char* _team)
-{
-	char* end;
-	scim_team_code_t team;
-
-	errno = 0;
-	team = strtoul(_team, &end, 10);
-
-   	if(errno) {
-		fprintf(stderr, "%s: strtoul: %m\n", __func__);
-		return -1;
-   	}
-
-	if(end == _team || team > _TEAM_MAX) {
-		fprintf(stderr, "%s: strtoul: %u > %u or %p == %p: %s\n", __func__, team, _TEAM_MAX, strerror(EINVAL), end, _team);
-		return -1;
-	}
-
-	_root->cells = __team[team].task;
-	_root->tend = __team[team].size;
-	_root->task = __task + _TASK_SRVCD;
-	_root->task->host = __team[team].task[0]->host;
-
-	return 0;
-}*/
-
 int scim_root_wake(scim_root_t _root)
 {
 	char** file;
 	char*** tool;
 
-	_root->down = _root->tend;
+	_root->kill = SIGTERM;
 	_root->pawn = syscall(SYS_getpid);
-	_root->step = __step_down;
 
 	sethostname(_root->task->name, strlen(_root->task->name));
 
@@ -341,7 +293,7 @@ int scim_root_wake(scim_root_t _root)
 		}
 	}
 
-	for(file = __file_firewall, tool = __tool_firewall; *tool; tool++) {
+	for(file = __file_firewall, tool = __load_firewall; *tool; file++, tool++) {
 		scim_tool_call(*tool, NULL, *file, NULL);
 	}
 
@@ -349,11 +301,7 @@ int scim_root_wake(scim_root_t _root)
 		return -1;
 	}
 
-	scim_term_post("/proc/sys/net/ipv4/icmp_echo_ignore_broadcasts", "0");
-
-	if(scim_port_wake(_root) < 0) {
-		return -1;
-	}
+	//scim_term_post("/proc/sys/net/ipv4/icmp_echo_ignore_broadcasts", "0");
 
 	return 0;
 }
@@ -380,12 +328,12 @@ int scim_root_done(scim_root_t _root)
 	return 0;
 }
 
-int scim_root_down(scim_root_t _root)
+int scim_root_save(scim_root_t _root)
 {
 	char** file;
 	char*** tool;
 
-	for(file = __file_firewall, tool = __tool_firewall; *tool; tool++) {
+	for(file = __file_firewall, tool = __save_firewall; *tool; file++, tool++) {
 		scim_tool_call(*tool, NULL, NULL, *file);
 	}
 
@@ -396,23 +344,17 @@ int scim_root_work(scim_root_t _root)
 {
 	for(_root->loop = 0;; _root->loop++) {
 		if(_root->step == __step_down) {
-			if(_root->loop == 0) {
-				fprintf(stderr, "Starting %s/%0X, zone %s, role %s, duty %s\n",
-					_root->task->name, _root->task->cell->code, _root->task->cell->zone->term,
-						_root->task->cell->role->term, _root->task->cell->duty->term);
-				_root->step = __step_wake;
-				scim_wait_toll(_root);
-			}
-			else {
-				if(_root->tend == _root->down) {
-					fprintf(stderr, "%s shuting down\n", _root->task->name);
-					scim_root_down(_root);
-					break;
-				}
+			if(_root->tend == _root->down) {
+				fprintf(stderr, "%s shuting down\n", _root->task->name);
+				break;
 			}
 		}
 
 		if(_root->step == __step_wake) {
+			fprintf(stderr, "Starting %s/%0X, zone %s, role %s, duty %s\n",
+				_root->task->name, _root->task->cell->code, _root->task->cell->zone->term,
+					_root->task->cell->role->term, _root->task->cell->duty->term);
+			scim_wait_toll(_root);
 			_root->step = __step_work;
 		}
 
@@ -423,7 +365,6 @@ int scim_root_work(scim_root_t _root)
 					_root->tend, _root->wake, _root->work, _root->done, _root->down, _root->wait, _root->wild, _root->dead);
 
 				if(_root->tasks) {
-
 					scim_crew_wake(_root);
 				}
 
@@ -462,13 +403,16 @@ int scim_root_work(scim_root_t _root)
 				_root->step = __step_down;
 			}
 			else {
-				//fprintf(stderr, "tend %d, wake %d, work %d, done %d, down %d, wait %d, wild %d, dead %d, resting\n", _root->tend, _root->wake, _root->work, _root->done, _root->down, _root->wait, _root->wild, _root->dead);
 				if(_root->cells) {
 					scim_team_down(_root);
 				}
 
 				if(_root->tasks) {
 					scim_crew_down(_root);
+				}
+
+				if(_root->task->form == __form_cell) {
+					_root->kill = SIGKILL;
 				}
 			}
 		}

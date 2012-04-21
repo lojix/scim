@@ -69,7 +69,7 @@ libscim_la_SOURCES = \
 	$(libscim_la_netlink_sources) \
 	$(libscim_la_sources)
 
-libscim_la_LDFLAGS = -larchive -llzma
+libscim_la_LDFLAGS = -larchive -llzma -luuid
 
 scim_data = \
 	aide.txt \

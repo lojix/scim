@@ -4,6 +4,7 @@
 #include <dirent.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <sys/mount.h>
 #include <fcntl.h>
 #include <net/if.h>
 #include <arpa/inet.h>
@@ -131,9 +132,20 @@ int scim_port_list(scim_port_data_t _port)
 	DIR* list;
 	struct dirent* item;
 
+	retry:
+
 	if((list = opendir("/sys/class/net/")) == NULL) {
-		fprintf(stderr, "%s: opendir /sys/class/net/: %m\n", __func__);
-		return -1;
+		if(errno != ENOENT) {
+			fprintf(stderr, "%s: opendir /sys/class/net/: %m\n", __func__);
+			return -1;
+		}
+
+		if(mount("none", "/sys", "sysfs", 0, NULL) < 0) {
+			fprintf(stderr, "%s: mount /sys: %m\n", __func__);
+			return -1;
+		}
+
+		goto retry;
 	}
 
 	if((base = dirfd(list)) < 0) {
@@ -227,6 +239,22 @@ int scim_port_pick(scim_port_data_t _port, scim_port_code_t _code, const char* _
 	return -1;
 }
 
+int scim_port_find(scim_port_data_t _data, scim_port_item_t* _port, scim_port_code_t _code, const char* _term)
+{
+	size_t size = strlen(_term);
+	scim_port_list_t list = _data->list;
+
+	for(; **list; list++) {
+		*_port = *list;
+
+		if(!strncmp((*_port)[_code], _term, size)) {
+			return true;
+		}
+	}
+
+	return false;
+}
+ 
 int scim_port_make(scim_task_t _task)
 {
 	int index;
@@ -295,11 +323,13 @@ int scim_port_wake(scim_root_t _root)
 {
 	int index;
 	int netlink;
-	int result = 0;
+	int result = -1;
 	char name[IFNAMSIZ];
+	scim_lane_t lane;
 	scim_port_data_t port;
 
 	if((netlink = netlink_open()) < 0) {
+		fprintf(stderr, "%s: netlink_open: %m\n", __func__);
 		return -1;
 	}
 
@@ -307,44 +337,45 @@ int scim_port_wake(scim_root_t _root)
 		goto done;
 	}
 
-	for(scim_port_head(port); *port->info; port->item++, port->info = *port->item) {
-		snprintf(name, sizeof(name), "%s",  port->info[_PORT_NAME]);
+	for(scim_port_list_t list = port->list; **list; list++) {
+		scim_port_item_t info = *list;
+
+		snprintf(name, sizeof(name), "%s",  info[_PORT_NAME]);
 
 		if(strcmp(name, "lo") && strncmp(name + 3, "bone", 4) && strncmp(name + 3, "port", 4)) {
 			continue;
 		}
 
-		if(!sscanf(port->info[_PORT_INDEX], "%d", &index)) {
+		if(!sscanf(info[_PORT_INDEX], "%d", &index)) {
 			errno = EINVAL;
 			fprintf(stderr, "%s: port->info[_PORT_INDEX]: %m\n", __func__);
 			goto done;
 		}
 
-		if(name[2] && !strncmp(name + 3, "port", 4) && isdigit(name[7])) {
-			name[7] = '\0';
+		if(name[2] && !strncmp(name + 3, "port", 4)) {
+			if(isdigit(name[7])) {
+				name[7] = '\0';
 
-			if(netlink_link_rename(netlink, name, index) < 0) {
-				goto done;
-			}
-		}
-
-		if(name[2]) {
-			scim_lane_t lane = __lane;
-
-			for(; lane->name; lane++) {
-				if(!strncmp(lane->name, name, 3)) {
-					break;
+				if(netlink_link_rename(netlink, name, index) < 0) {
+					fprintf(stderr, "%s: netlink_link_rename %s to %s: %m\n", __func__, info[_PORT_NAME], name);
+					goto done;
 				}
 			}
 
-			if(lane->name && lane->base) {
+			for(lane = __lane; *lane->name && strncmp(lane->name, name, 3); lane++);
+
+			if(*lane->name && lane->base) {
 				uint32_t mask = ((uint32_t)0xffffffffU << lane->size) >> lane->size;
+
 				uint32_t address = htonl(lane->base|(_root->task->cell->code + 1));
+
 				uint32_t broadcast = htonl(lane->base|mask);
 
 				if(netlink_address_four_create(netlink, index, address, broadcast, lane->size, 0) < 0) {
-					fprintf(stderr, "%s: netlink_address_four_create: %s, %08x: %m\n", __func__, name, address);
-					goto done;
+					if(errno != EEXIST) {
+						fprintf(stderr, "%s: netlink_address_four_create: %s, %08x: %m\n", __func__, name, address);
+						goto done;
+					}
 				}
 			}
 		}
@@ -385,9 +416,12 @@ int scim_lane_make(scim_root_t _root)
 				return -1;
 			}
 		}
+		else {
+			continue;
+		}
 
 		snprintf(path, sizeof(path), "/sys/class/net/%s/bonding/mode", name);
-		
+
 		if(scim_term_post(path, "1") < 0) {
 			return -1;
 		}
@@ -411,81 +445,183 @@ int scim_lane_make(scim_root_t _root)
 		if(scim_term_post(path, term) < 0) {
 			return -1;
 		}
+
+		snprintf(path, sizeof(path), "/proc/sys/net/ipv6/conf/%s/disable_ipv6", name);
+
+		if(scim_term_post(path, "1") < 0) {
+			return -1;
+		}
 	}
 
 	return 0;
 }
 
-int scim_link_note(scim_root_t _root)
+int scim_link_init(void)
 {
 	char path[PATH_MAX];
-	char name[IFNAMSIZ];
-	FILE* file;
-	int note;
+	int file;
 	int result = -1;
 	scim_link_data_t link = {};
-	scim_port_data_t port = {};
 
-	snprintf(path, sizeof(path), "%s/link", SCIM_DATA_PATH);
+	snprintf(path, sizeof(path), "%sdb/link", LOCALSTATEDIR);
 
-	if((note = open(path, O_CREAT|O_TRUNC|O_WRONLY)) < 0) {
+	if((file = open(path, O_CREAT|O_TRUNC|O_WRONLY, 0644)) < 0) {
 		fprintf(stderr, "%s: open %s: %m\n", __func__, path);
 		return -1;
 	}
 
-	if(scim_port_list(port) < 0) {
-		goto done;
-	}
+	for(scim_lane_t lane = __lane; *lane->name; lane++) {
+		strncpy(link->lane, lane->name, sizeof(link->lane));
+		strncat(link->lane, "bone", sizeof(link->lane) - strlen(link->lane));
 
-	for(; *port->info; port->item++, port->info = *port->item) {
-		snprintf(path, sizeof(path), "/sys/class/net/%s/bonding/slaves", port->info[_PORT_NAME]);
-
-		if((file = fopen(path, "r")) == NULL) {
-			continue;
-		}
-
-		while(fgets(name, sizeof(name), file)) {
-			if(strncmp(name, "eth", 3)) {
-				continue;
-			}
-
-			if(scim_port_pick(port, _PORT_NAME, name) < 0) {
-				continue;
-			}
-
-			for(scim_lane_t lane = __lane; lane->name; lane++) {
-				if(!strncmp(lane->name, port->info[_PORT_NAME], 3)) {
-					strncpy(link->port, port->info[_PORT_ADDRESS], sizeof(link->port));
-					strncpy(link->lane, name, sizeof(link->lane));
-
-					if(write(note, link, sizeof(link)) < 0) {
-						fprintf(stderr, "%s: write %s: %m\n", __func__, name);
-						goto done;
-					}
-					break;
-				}
-			}
+		if(write(file, link, sizeof(link)) < 0) {
+			fprintf(stderr, "%s: write %s: %m\n", __func__, path);
+			goto done;
 		}
 	}
 
 	result = 0;
 	done:
-	close(note);
+	close(file);
 	return result;
 }
 
-int scim_link_redo(scim_root_t _root)
+int scim_link_save(const char* _lane, const char* _card)
+{
+	char path[PATH_MAX];
+	int file;
+	int result = -1;
+	scim_link_data_t link = {};
+	scim_port_data_t list = {};
+	scim_port_item_t lane;
+	scim_port_item_t card;
+
+	if(scim_port_list(list) < 0) {
+		return -1;
+	}
+
+	if(!scim_port_find(list, &lane, _PORT_NAME, _lane)) {
+		return -1;
+	}
+
+	if(!scim_port_find(list, &card, _PORT_NAME, _card)) {
+		return -1;
+	}
+
+	snprintf(path, sizeof(path), "%sdb/link", LOCALSTATEDIR);
+
+	if(access(path, W_OK) < 0) {
+		if(errno != ENOENT) {
+			fprintf(stderr, "%s: access %s: %m\n", __func__, path);
+			return -1;
+		}
+
+		if(scim_link_init() < 0) {
+			return -1;
+		}
+	}
+
+	if((file = open(path, O_RDWR)) < 0) {
+		fprintf(stderr, "%s: open %s: %m\n", __func__, path);
+		return -1;
+	}
+
+	for(int slot = 0;; slot++) {
+		switch(read(file, link, sizeof(link))) {
+			case -1:
+			fprintf(stderr, "%s: read %s: %m\n", __func__, path);
+			goto done;
+
+			case 0:
+			result = 0;
+			goto done;
+
+			default:
+			break;
+		}
+
+		if(strcmp(link->lane, _lane)) {
+			continue;
+		}
+
+		strncpy(link->code, card[_PORT_ADDRESS], sizeof(link->code));
+
+		if(pwrite(file, link, sizeof(link), sizeof(link) * slot) < 0) {
+			fprintf(stderr, "%s: pwrite %s: %m\n", __func__, path);
+			goto done;
+		}
+
+		break;
+	}
+
+	result = 0;
+	done:
+	close(file);
+	return result;
+}
+
+int scim_link_call(scim_link_call_t _call, void* _data)
+{
+	char path[PATH_MAX];
+	int result = -1;
+	int file;
+	scim_link_data_t link = {};
+
+	snprintf(path, sizeof(path), "%sdb/link", LOCALSTATEDIR);
+
+	retry:
+
+	if((file = open(path, O_RDONLY)) < 0) {
+		if(errno != ENOENT) {
+			fprintf(stderr, "%s: open %s: %m\n", __func__, path);
+			return -1;
+		}
+
+		if(scim_link_init() < 0) {
+			return -1;
+		}
+
+		goto retry;
+	}
+
+	for(;;) {
+		switch(read(file, link, sizeof(link))) {
+			case -1:
+			fprintf(stderr, "%s: read %s: %m\n", __func__, path);
+			goto done;
+
+			case 0:
+			result = 0;
+			goto done;
+
+			default:
+			break;
+		}
+
+		if(_call(link, _data) < 0) {
+			goto done;
+		}
+	}
+
+	result = 0;
+	done:
+	close(file);
+	return result;
+}
+
+int scim_link_open(scim_root_t _root)
 {
 	char path[PATH_MAX];
 	char term[IFNAMSIZ];
-	int note;
+	int file;
 	int result = -1;
 	scim_link_data_t link = {};
 	scim_port_data_t port = {};
+	scim_port_item_t info;
 
-	snprintf(path, sizeof(path), "%slink", SCIM_DATA_PATH);
+	snprintf(path, sizeof(path), "%sdb/link", LOCALSTATEDIR);
 
-	if((note = open(path, O_RDONLY)) < 0) {
+	if((file = open(path, O_RDONLY)) < 0) {
 		if(errno != ENOENT) {
 			fprintf(stderr, "%s: open %s: %m\n", __func__, path);
 			return -1;
@@ -499,7 +635,7 @@ int scim_link_redo(scim_root_t _root)
 	}
 
 	for(;;) {
-		switch(read(note, link, sizeof(link))) {
+		switch(read(file, link, sizeof(link))) {
 			case -1:
 			fprintf(stderr, "%s: read %s: %m\n", __func__, path);
 			goto done;
@@ -512,19 +648,23 @@ int scim_link_redo(scim_root_t _root)
 			break;
 		}
 
-		if(scim_port_pick(port, _PORT_ADDRESS, link->port) < 0) {
+		if(*link->code == '\0') {
+			continue;
+		}
+
+		if(!scim_port_find(port, &info, _PORT_ADDRESS, link->code)) {
 			continue;
 		}
 
 		snprintf(path, sizeof(path), "/sys/class/net/%s/bonding/slaves", link->lane);
-		snprintf(term, sizeof(term), "+%s", port->info[_PORT_NAME]);
+		snprintf(term, sizeof(term), "+%s", info[_PORT_NAME]);
 
 		if(scim_term_post(path, term) < 0) {
 			return -1;
 		}
 
 		snprintf(path, sizeof(path), "/sys/class/net/%s/bonding/primary", link->lane);
-		snprintf(term, sizeof(term), "%s", port->info[_PORT_NAME]);
+		snprintf(term, sizeof(term), "%s", info[_PORT_NAME]);
 
 		if(scim_term_post(path, term) < 0) {
 			return -1;
@@ -532,6 +672,6 @@ int scim_link_redo(scim_root_t _root)
 	}
 
 	done:
-	close(note);
+	close(file);
 	return result;
 }

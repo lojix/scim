@@ -25,8 +25,8 @@ int scim_lzma_pack(const char* _source, const char* _target)
 		struct utsname utsname;
 
 		uname(&utsname);
-		path = alloca(snprintf(NULL, 0, "/boot/x%d-linux-%s-glibc-%s/sysdata", LONG_BIT, utsname.release, gnu_get_libc_version()));
-		sprintf(path, "/boot/x%d-linux-%s-glibc-%s/sysdata", LONG_BIT, utsname.release, gnu_get_libc_version());
+		path = alloca(snprintf(NULL, 0, "/vol/os/x%d-linux-%s-glibc-%s/boot/sysdata", LONG_BIT, utsname.release, gnu_get_libc_version()));
+		sprintf(path, "/vol/os/x%d-linux-%s-glibc-%s/boot/sysdata", LONG_BIT, utsname.release, gnu_get_libc_version());
 		_target = path;
 	}
 

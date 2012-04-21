@@ -1,17 +1,18 @@
 #include "scim/scim.h"
 #include <fcntl.h>
+#include <sys/stat.h>
 #include <time.h>
 #include <signal.h>
 #include <gnu/libc-version.h>
 #include <sys/mount.h>
 #include <sys/utsname.h>
+#include <sys/wait.h>
 
-#define _MKINITRD				ROOTSBINDIR "mkinitrd"
 #define _MODPROBE				ROOTSBINDIR "modprobe"
-#define _UDEVD					 ROOTLIBDIR	"udev/udevd"
+#define _UDEVD					 ROOTLIBDIR "udev/udevd"
 #define _UDEVADM				ROOTSBINDIR "udevadm"
 
-char* __file_modprobe[] = {
+static char* __module[] = {
  "bonding",
  "dummy",
  "fuse",
@@ -21,7 +22,7 @@ char* __file_modprobe[] = {
 
 char* __tool_modprobe[] = {_MODPROBE, NULL, NULL};
 
-char** __tool_hardware[] = {
+char** __cold_plug[] = {
  (char*[]){_UDEVD, "--daemon", "--resolve-names=never", NULL},
  (char*[]){_UDEVADM, "trigger", NULL},
  (char*[]){_UDEVADM, "settle", NULL},
@@ -29,64 +30,113 @@ char** __tool_hardware[] = {
  NULL
 };
 
+char** __warm_plug[] = {
+ (char*[]){_UDEVADM, "trigger", NULL},
+ (char*[]){_UDEVADM, "settle", NULL},
+ NULL
+};
+
+int scim_host_kmod_load(char** _list)
+{
+	for(char** file = _list; *file; file++) {
+		__tool_modprobe[1] = *file;
+		scim_tool_call(__tool_modprobe, NULL, NULL, NULL);
+	}
+
+	return 0;
+}
+
+int scim_host_cold_plug(void)
+{
+	for(char*** tool = __cold_plug; *tool; tool++) {
+		scim_tool_call(*tool, NULL, NULL, NULL);
+	}
+
+	return 0;
+}
+
+int scim_host_warm_plug(void)
+{
+	for(char*** tool = __warm_plug; *tool; tool++) {
+		scim_tool_call(*tool, NULL, NULL, NULL);
+	}
+
+	return 0;
+}
+
+int scim_host_read(scim_root_t _root, const char* _host)
+{
+	char* end;
+	int host;
+
+	errno = 0;
+	host = strtoul(_host, &end, 10);
+
+   	if(errno) {
+		fprintf(stderr, "%s: strtoul: %m\n", __func__);
+		return -1;
+   	}
+
+	if(end == _host || host > _CELL_CODE_MAX) {
+		fprintf(stderr, "%s: strtoul: %u > %u or %p == %p: %s\n", __func__, host, _CELL_CODE_MAX, strerror(EINVAL), end, _host);
+		return -1;
+	}
+
+	return host;
+}
+
 int scim_host_site_redo(scim_root_t _root)
 {
-	char path[PATH_MAX] = "/dev/disk/by-label/";
-	char datadev[16];
-	char execdev[16];
-	char execdir[16];
-	char loopdev[16];
-	int unit;
+	char path[PATH_MAX];
+	char system[NAME_MAX];
+	char* boot;
+	char* exec_prefix;
+	char* prefix;
 	struct utsname utsname;
-	scim_site_data_t site = {
-	 {
-		.last = 1,
-		.list = {
-			{path, "/vol", "btrfs", "subvolid=0"},
-			{path, "/boot", "btrfs", "subvol=boot"},
-			{}
-		}
-	 }
-	};
+	scim_site_data_t site = {};
 
-	strncat(path, _root->task->name, 12);
+	snprintf(path, sizeof(path), "/dev/disk/by-label/%s", _root->task->name);
 
-	if(access(path, F_OK) != 0) {
+	if(access(path, F_OK) < 0) {
 		fprintf(stderr, "%s: access %s: %m\n", __func__, path);
-		return 0;
+		return -1;
 	}
+
+	scim_site_put(site, "none", "/config", "configfs", NULL);
+	scim_site_put(site, "none", "/dev/mqueue", "mqueue", NULL);
+	scim_site_put(site, "none", "/dev/pts", "devpts", NULL);
+	scim_site_put(site, "none", "/dev/shm", "tmpfs", "mode=1777");
+	scim_site_put(site, "none", "/proc/sys/fs/binfmt_misc", "binfmt_misc", NULL);
+	scim_site_put(site, "none", "/sys/fs/fuse/connections", "fusectl", NULL);
+	scim_site_put(site, "none", "/tmp", "tmpfs", "mode=1777");
+	scim_site_put(site, path, "/vol", "btrfs", "subvolid=0");
 
 	if(scim_site_redo(site) < 0) {
 		return -1;
 	}
 
-	if(scim_loop_find(&unit) < 0) {
-		return -1;
-	}
-
 	uname(&utsname);
 
-	snprintf(path, sizeof(path), "/boot/x%d-linux-%s-glibc-%s/system", LONG_BIT, utsname.release, gnu_get_libc_version());
-	snprintf(loopdev, sizeof(loopdev), "/dev/loop%d", unit);
-	snprintf(datadev, sizeof(datadev), "/dev/loop%dp1", unit);
-	snprintf(execdev, sizeof(execdev), "/dev/loop%dp2", unit);
-	snprintf(execdir, sizeof(execdir), "/usr%d", LONG_BIT);
+	snprintf(system, sizeof(system), "x%d-linux-%s-glibc-%s",
+		LONG_BIT, utsname.release, gnu_get_libc_version());
 
-	if(scim_loop_bind(loopdev, path, 0) < 0) {
-		return -1;
-	}
+	snprintf(path, sizeof(path), "/vol/os/%s/boot", system);
+	boot = strdupa(path);
 
-	site->flag = MS_RDONLY;
+	snprintf(path, sizeof(path), "/vol/os/%s/usr", system);
+	prefix = strdupa(path);
 
-	site->list[0][0] = datadev;
-	site->list[0][1] = "/usr";
-	site->list[0][2] = "squashfs";
-	site->list[0][3] = NULL;
+	snprintf(path, sizeof(path), "/vol/os/%s/usr%d", system, LONG_BIT);
+	exec_prefix = strdupa(path);
 
-	site->list[1][0] = execdev;
-	site->list[1][1] = execdir;
-	site->list[1][2] = "squashfs";
-	site->list[1][3] = NULL;
+	site->flag = MS_BIND;
+	site->last = 0;
+
+	scim_site_put(site, boot, "/boot", NULL, NULL);
+	scim_site_put(site, prefix, PREFIX, NULL, NULL);
+	scim_site_put(site, exec_prefix, EXEC_PREFIX, NULL, NULL);
+	scim_site_put(site, "/vol/log", "/var/log", NULL, NULL);
+	scim_site_put(site, NULL, NULL, NULL, NULL);
 
 	if(scim_site_redo(site) < 0) {
 		return -1;
@@ -101,7 +151,7 @@ int scim_host_save(scim_root_t _root)
 	struct utsname utsname;
 
 	uname(&utsname);
-	snprintf(path, sizeof(path), "/boot/x%d-linux-%s-glibc-%s/", LONG_BIT, utsname.release, gnu_get_libc_version());
+	snprintf(path, sizeof(path), "/vol/os/x%d-linux-%s-glibc-%s/boot/", LONG_BIT, utsname.release, gnu_get_libc_version());
 
 	if(access(path, F_OK) < 0) {
 		errno = 0;
@@ -121,8 +171,6 @@ int scim_host_save(scim_root_t _root)
 
 int scim_host_wake(scim_root_t _root)
 {
-	char** file;
-	char*** tool;
 	scim_cell_code_t cell;
 
 	if((unsigned)(cell = gethostid()) > 3) {
@@ -133,32 +181,29 @@ int scim_host_wake(scim_root_t _root)
 	_root->task = __cell[cell].task;
 	_root->tasks = _root->task->cell->tasks;
 	_root->tend = _root->cells->size + _root->tasks->size;
+	_root->down = _root->tend;
+	_root->mark = 0x7f000000|((_root->task->cell->code & 0xff) << 16);
+	_root->step = __step_wake;
 
-	scim_tale_open(_root->task->name);
+	umask(0);
 
-	fprintf(stderr, "%02X %s %s %s %s\n",
-		_root->task->cell->code, _root->task->name,
-		_root->task->cell->zone->term, _root->task->cell->role->term,
-		_root->task->cell->duty->term);
-
-	if(scim_site_redo(__host_site) < 0) {
+	if(scim_host_kmod_load(__module) < 0) {
 		return -1;
 	}
 
-	for(file = __file_modprobe; *file; file++) {
-		__tool_modprobe[1] = *file;
-		scim_tool_call(__tool_modprobe, NULL, NULL, NULL);
+	if(scim_host_cold_plug() < 0) {
+		return -1;
 	}
 
-	for(tool = __tool_hardware; *tool; tool++) {
-		scim_tool_call(*tool, NULL, NULL, NULL);
+	if(scim_host_site_redo(_root) < 0) {
+		return -1;
+	}
+
+	if(scim_log_open(NULL) < 0) {
+		return -1;
 	}
 
 	if(scim_lane_make(_root) < 0) {
-		return -1;
-	}
-
-	if(scim_link_redo(_root) < 0) {
 		return -1;
 	}
 
@@ -166,9 +211,22 @@ int scim_host_wake(scim_root_t _root)
 		return -1;
 	}
 
-	if(scim_host_site_redo(_root) < 0) {
+	if(scim_port_wake(_root) < 0) {
 		return -1;
 	}
+
+	if(scim_cell_site_open(_root) < 0) {
+		return -1;
+	}
+
+	if(scim_cell_make(_root) < 0) {
+		return -1;
+	}
+
+	fprintf(stderr, "%02X %s %s %s %s\n",
+		_root->task->cell->code, _root->task->name,
+		_root->task->cell->zone->term, _root->task->cell->role->term,
+		_root->task->cell->duty->term);
 
 	return 0;
 }
@@ -179,7 +237,6 @@ int scim_host_down(scim_root_t _root)
 	int fifo;
 	size_t size;
 
-	scim_link_note(_root);
 	scim_host_save(_root);
 
 	if(!_root->halt) {

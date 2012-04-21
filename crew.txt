@@ -1,5 +1,5 @@
 INTRANET_CONTENT sshd syslogd
-INTRANET_HOSTING udevd sshd klogd syslogd
+INTRANET_HOSTING udevd dbus-daemon sshd klogd syslogd consd glusterfsd-adm glusterfsd-cell glusterfsd-home glusterfs-adm glusterfs-cell glusterfs-home
 INTRANET_MESSAGE sshd syslogd
 INTRANET_PRESIDE sshd syslogd dhcpd named
 INTRANET_ROUTING sshd syslogd

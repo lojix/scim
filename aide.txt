@@ -1,2 +1,11 @@
 klogd syslogd
-glusterfs glusterfsd
+glusterfs-adm glusterfsd-adm
+glusterfs-cell glusterfsd-cell
+glusterfs-home glusterfsd-home
+aether glusterfs-adm glusterfs-cell
+apate glusterfs-adm glusterfs-cell
+apollo glusterfs-adm glusterfs-cell
+artemis glusterfs-adm glusterfs-cell
+atlas glusterfs-adm glusterfs-cell
+cronus glusterfs-adm glusterfs-cell
+enyo glusterfs-adm glusterfs-cell

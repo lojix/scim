@@ -74,3 +74,24 @@ int scim_loop_bind(const char* _loop, const char* _file, bool _writeable)
 
 	return result;
 }
+
+int scim_loop_free(const char* _loop)
+{
+	int loop;
+	int result = -1;
+
+	if((loop = open(_loop, O_RDONLY)) < 0) {
+		fprintf(stderr, "%s: open %s: %m\n", __func__, _loop);
+		return -1;
+	}
+
+	if(ioctl(loop, LOOP_CLR_FD, 0) < 0) {
+		fprintf(stderr, "%s: ioctl LOOP_CLR_FD: %m\n", __func__);
+		goto done;
+	}
+
+	result = 0;
+	done:
+	close(loop);
+	return result;
+}
