@@ -3,6 +3,8 @@
 
 int main(int argc, char* argv[])
 {
+	btrfs_volume_create(argv[1]);
+/*
 	if(argc < 4) {
 		exit(EXIT_FAILURE);
 	}
@@ -18,7 +20,7 @@ int main(int argc, char* argv[])
 	if(scim_glusterfs_make(argv[3], argv[4]) < 0) {
 		exit(EXIT_FAILURE);
 	}
-/*	scim_port_data_t list;
+	scim_port_data_t list;
 	scim_port_item_t item;
 
 	if(scim_port_list(list) < 0) {

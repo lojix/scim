@@ -21,6 +21,7 @@ noinst_PROGRAMS		= test
 
 nobase_include_HEADERS = \
 	scim/api.h \
+	scim/btrfs.h \
 	scim/code.h \
 	scim/data.h \
 	scim/netlink.h \
@@ -48,6 +49,7 @@ libscim_la_netlink_sources = \
 	scim_netlink_link.c
 
 libscim_la_sources = \
+	btrfs.c \
 	scim_data.c \
 	scim_port.c \
 	scim_site.c \
